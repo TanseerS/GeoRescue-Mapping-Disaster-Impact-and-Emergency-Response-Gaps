@@ -1,0 +1,320 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  GeoRescue serverless data pipeline. EventBridge Scheduler triggers a Lambda that ingests the
+  USGS earthquake feed into a private S3 bucket every 5 minutes; a second Lambda serves the data
+  through an HTTP API with configurable CORS. Optionally creates an Amazon Location API key.
+
+Parameters:
+  AllowedOrigins:
+    Type: CommaDelimitedList
+    Default: "http://localhost:5173,http://localhost:4173"
+    Description: Browser origins allowed by CORS (comma-separated, no trailing slash), e.g. https://georescue.example.com
+  IngestionSchedule:
+    Type: String
+    Default: rate(5 minutes)
+    Description: EventBridge Scheduler expression for ingestion.
+  IngestionScheduleState:
+    Type: String
+    Default: ENABLED
+    AllowedValues: [ENABLED, DISABLED]
+  WindowDays:
+    Type: Number
+    Default: 30
+    MinValue: 1
+    MaxValue: 30
+    Description: Days of earthquakes kept in the rolling window served by the API (USGS all_month covers 30).
+  HistoryRetentionDays:
+    Type: Number
+    Default: 90
+    MinValue: 1
+    Description: Days to keep hourly history snapshots before S3 lifecycle expiry.
+  LogRetentionDays:
+    Type: Number
+    Default: 14
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365]
+  AlarmEmail:
+    Type: String
+    Default: ""
+    Description: Optional email address notified when ingestion fails (leave empty to skip).
+  CreateMapApiKey:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Create an Amazon Location Service API key restricted to map tiles and the referrers below.
+  MapAllowedReferers:
+    Type: CommaDelimitedList
+    Default: "http://localhost:5173/*"
+    Description: Referrer patterns allowed to use the map API key (up to 5), e.g. https://georescue.example.com/*
+
+Conditions:
+  HasAlarmEmail: !Not [!Equals [!Ref AlarmEmail, ""]]
+  ShouldCreateMapApiKey: !Equals [!Ref CreateMapApiKey, "true"]
+
+Globals:
+  Function:
+    Runtime: nodejs24.x
+    Architectures: [arm64]
+    MemorySize: 512
+    Environment:
+      Variables:
+        DATA_BUCKET: !Ref DataBucket
+        WINDOW_DAYS: !Ref WindowDays
+        NODE_OPTIONS: --enable-source-maps
+
+Resources:
+  # ─── Storage ────────────────────────────────────────────────────────────────
+  DataBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireHistorySnapshots
+            Status: Enabled
+            Prefix: earthquakes/history/
+            ExpirationInDays: !Ref HistoryRetentionDays
+          - Id: AbortIncompleteUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+
+  DataBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref DataBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt DataBucket.Arn
+              - !Sub "${DataBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
+  # ─── Ingestion ──────────────────────────────────────────────────────────────
+  IngestFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: !Ref LogRetentionDays
+
+  IngestFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        EntryPoints: [src/functions/ingest.ts]
+        Format: esm
+        OutExtension: [".js=.mjs"]
+        Target: es2022
+        Minify: true
+        Sourcemap: true
+        Banner:
+          - "js=import { createRequire } from 'module'; const require = createRequire(import.meta.url);"
+    Properties:
+      Description: Fetches the USGS all_day feed, merges it into the rolling window and stores GeoJSON in S3.
+      CodeUri: ./
+      Handler: ingest.handler
+      Timeout: 90
+      LoggingConfig:
+        LogGroup: !Ref IngestFunctionLogGroup
+      Environment:
+        Variables:
+          USGS_FEED_BASE_URL: https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Sid: ReadWriteEarthquakeData
+              Effect: Allow
+              Action: [s3:GetObject, s3:PutObject]
+              Resource:
+                - !Sub "${DataBucket.Arn}/earthquakes/*"
+                - !Sub "${DataBucket.Arn}/metadata/*"
+            - Sid: DistinguishMissingObjects # lets GetObject return 404 instead of 403 for absent keys
+              Effect: Allow
+              Action: s3:ListBucket
+              Resource: !GetAtt DataBucket.Arn
+      # Scheduler invokes asynchronously: retry a failed run once, and drop it before the next run is due.
+      EventInvokeConfig:
+        MaximumRetryAttempts: 1
+        MaximumEventAgeInSeconds: 240
+      Events:
+        IngestionSchedule:
+          Type: ScheduleV2
+          Properties:
+            Description: GeoRescue USGS ingestion
+            ScheduleExpression: !Ref IngestionSchedule
+            State: !Ref IngestionScheduleState
+            FlexibleTimeWindow:
+              Mode: "OFF"
+            # Retries delivery failures (e.g. throttling) and sends undeliverable events to an SQS DLQ.
+            RetryPolicy:
+              MaximumRetryAttempts: 2
+              MaximumEventAgeInSeconds: 240
+            DeadLetterConfig:
+              Type: SQS
+
+  # ─── API ────────────────────────────────────────────────────────────────────
+  ApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: !Ref LogRetentionDays
+
+  ApiAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: !Ref LogRetentionDays
+
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Description: GeoRescue earthquake data API
+      CorsConfiguration:
+        AllowOrigins: !Ref AllowedOrigins
+        AllowMethods: [GET, OPTIONS]
+        AllowHeaders: [content-type]
+        MaxAge: 600
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 50
+        ThrottlingRateLimit: 20
+      AccessLogSettings:
+        DestinationArn: !GetAtt ApiAccessLogGroup.Arn
+        Format: '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","method":"$context.httpMethod","path":"$context.path","status":"$context.status","latencyMs":"$context.responseLatency","integrationError":"$context.integrationErrorMessage"}'
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        EntryPoints: [src/functions/api.ts]
+        Format: esm
+        OutExtension: [".js=.mjs"]
+        Target: es2022
+        Minify: true
+        Sourcemap: true
+        Banner:
+          - "js=import { createRequire } from 'module'; const require = createRequire(import.meta.url);"
+    Properties:
+      Description: Serves earthquake GeoJSON, ingestion metadata and health from S3.
+      CodeUri: ./
+      Handler: api.handler
+      Timeout: 10
+      LoggingConfig:
+        LogGroup: !Ref ApiFunctionLogGroup
+      Environment:
+        Variables:
+          STALE_AFTER_SECONDS: "900"
+          CACHE_TTL_SECONDS: "30"
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Sid: ReadEarthquakeData
+              Effect: Allow
+              Action: s3:GetObject
+              Resource:
+                - !Sub "${DataBucket.Arn}/earthquakes/*"
+                - !Sub "${DataBucket.Arn}/metadata/*"
+            - Sid: DistinguishMissingObjects
+              Effect: Allow
+              Action: s3:ListBucket
+              Resource: !GetAtt DataBucket.Arn
+      Events:
+        Earthquakes:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /earthquakes
+            Method: GET
+        Metadata:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /earthquakes/metadata
+            Method: GET
+        Health:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /health
+            Method: GET
+
+  # ─── Monitoring ─────────────────────────────────────────────────────────────
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Condition: HasAlarmEmail
+    Properties:
+      Subscription:
+        - Protocol: email
+          Endpoint: !Ref AlarmEmail
+
+  IngestionErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: GeoRescue ingestion Lambda failed in 2 of the last 3 five-minute periods.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref IngestFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 2
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlarmEmail, [!Ref AlarmTopic], !Ref "AWS::NoValue"]
+      OKActions: !If [HasAlarmEmail, [!Ref AlarmTopic], !Ref "AWS::NoValue"]
+
+  # ─── Amazon Location Service (optional) ─────────────────────────────────────
+  MapApiKey:
+    Type: AWS::Location::APIKey
+    Condition: ShouldCreateMapApiKey
+    Properties:
+      KeyName: !Sub "${AWS::StackName}-maps"
+      Description: GeoRescue browser map key (tiles only, referrer-restricted)
+      NoExpiry: true
+      Restrictions:
+        # Style descriptors, sprites and glyphs need no authorization; tiles are the only gated call.
+        AllowActions: [geo-maps:GetTile]
+        AllowResources:
+          - !Sub "arn:${AWS::Partition}:geo-maps:${AWS::Region}::provider/default"
+        AllowReferers: !Ref MapAllowedReferers
+
+Outputs:
+  ApiUrl:
+    Description: Set as VITE_API_BASE_URL in the frontend.
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}"
+  DataBucketName:
+    Description: Private bucket holding GeoJSON (retained on stack deletion).
+    Value: !Ref DataBucket
+  IngestFunctionName:
+    Value: !Ref IngestFunction
+  IngestLogGroupName:
+    Value: !Ref IngestFunctionLogGroup
+  ApiLogGroupName:
+    Value: !Ref ApiFunctionLogGroup
+  IngestionErrorsAlarmName:
+    Value: !Ref IngestionErrorsAlarm
+  MapApiKeyName:
+    Condition: ShouldCreateMapApiKey
+    Description: Retrieve the key value with the describe-key command in infrastructure/README.md.
+    Value: !Ref MapApiKey

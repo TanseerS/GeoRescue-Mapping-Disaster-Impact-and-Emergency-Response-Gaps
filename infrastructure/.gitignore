@@ -1,0 +1,4 @@
+node_modules
+.aws-sam
+.local
+samconfig.local.toml
