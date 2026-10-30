@@ -107,7 +107,7 @@ describe("population routes", () => {
 
   it("validates coordinates, radii and task ids", async () => {
     const handle = api(fakeProvider({}));
-    const invalid: Record<string, string>[] = [{ lon: "1" }, { lat: "91", lon: "0" }, { lat: "0", lon: "0", radii: "10,5" }, { lat: "0", lon: "0", radii: "80" }];
+    const invalid: Record<string, string>[] = [{ lon: "1" }, { lat: "", lon: "" }, { lat: " ", lon: "0" }, { lat: "91", lon: "0" }, { lat: "0", lon: "0", radii: "10,5" }, { lat: "0", lon: "0", radii: "80" }];
     for (const q of invalid) expect((await handle(request("/population", q))).statusCode).toBe(400);
     expect((await handle(request("/population/tasks", { lat: "0", lon: "0", radii: "10", ids: "not-a-uuid" }))).statusCode).toBe(400);
     expect((await handle(request("/population/tasks", { lat: "0", lon: "0", radii: "10,20", ids: TASK }))).statusCode).toBe(400);

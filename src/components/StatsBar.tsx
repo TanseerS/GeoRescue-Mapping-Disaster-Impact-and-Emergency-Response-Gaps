@@ -14,23 +14,24 @@ interface StatCardProps {
   loading?: boolean;
   onClick?: () => void;
   title?: string;
+  className?: string;
 }
 
-function StatCard({ label, value, detail, icon, accent, loading, onClick, title }: StatCardProps) {
+function StatCard({ label, value, detail, icon, accent, loading, onClick, title, className = "" }: StatCardProps) {
   const Component = onClick ? "button" : "div";
   return (
     <Component
       type={onClick ? "button" : undefined}
       onClick={onClick}
       title={title}
-      className={`panel group relative min-w-0 overflow-hidden px-3.5 py-3 text-left ${
+      className={`panel group relative min-w-0 overflow-hidden px-3.5 py-3 text-left ${className} ${
         onClick ? "transition-colors hover:border-white/[0.14] hover:bg-ink-850" : ""
       }`}
     >
       <span className="pointer-events-none absolute -right-6 -top-6 h-16 w-16 rounded-full opacity-20 blur-2xl" style={{ backgroundColor: accent }} />
       <div className="flex items-center justify-between gap-2">
-        <p className="label-xs truncate lg:max-[1399px]:!tracking-[0.06em]">{label}</p>
-        <span className="shrink-0 lg:max-[1399px]:hidden" style={{ color: accent }}>
+        <p className="label-xs truncate">{label}</p>
+        <span className="shrink-0" style={{ color: accent }}>
           {icon}
         </span>
       </div>
@@ -56,7 +57,7 @@ interface StatsBarProps {
 export function StatsBar({ stats, loading, facilityCount, hospitalCount, analyzedAreas, onSelectStrongest }: StatsBarProps) {
   const strongest = stats.strongest;
   return (
-    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-5">
+    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-3 min-[1440px]:grid-cols-5">
       <StatCard
         label="Earthquakes"
         value={formatNumber(stats.total)}
@@ -74,7 +75,7 @@ export function StatsBar({ stats, loading, facilityCount, hospitalCount, analyze
         loading={loading}
       />
       <StatCard
-        label="Avg mag."
+        label="Avg magnitude"
         value={stats.averageMagnitude === null ? "—" : formatMagnitude(stats.averageMagnitude)}
         detail={stats.maxMagnitude === null ? "No events" : `Peak M ${formatMagnitude(stats.maxMagnitude)}`}
         icon={<Gauge className="h-4 w-4" />}
@@ -97,9 +98,10 @@ export function StatsBar({ stats, loading, facilityCount, hospitalCount, analyze
         value={strongest ? `M ${formatMagnitude(strongest.magnitude)}` : "—"}
         detail={strongest ? strongest.place : "No events"}
         icon={<Siren className="h-4 w-4" />}
-        accent={strongest ? SEVERITY_BY_ID[strongest.severity].color : "#64748b"}
+        accent={strongest ? SEVERITY_BY_ID[strongest.severity].color : "#8a99b0"}
         loading={loading}
         onClick={strongest ? () => onSelectStrongest(strongest) : undefined}
+        className="col-span-2 sm:col-span-1"
         title={strongest ? `Select strongest event: ${strongest.place}` : undefined}
       />
     </div>

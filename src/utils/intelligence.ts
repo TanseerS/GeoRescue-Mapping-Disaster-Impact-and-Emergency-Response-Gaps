@@ -95,7 +95,7 @@ export function buildBrief({ quake, analysis, radii, population, facilitiesUnava
   }
 
   if (population) {
-    const parts = population.results.map((r) => `≈ ${formatPopulation(r.population)} within ${r.radiusKm} km`);
+    const parts = population.results.map((r) => `${r.population > 0 ? `≈ ${formatPopulation(r.population)}` : "no residents"} within ${r.radiusKm} km`);
     sections.push({
       title: "Population exposure (estimate)",
       text: `${parts.join(", ")} (${population.dataset} ${population.year}, ${population.resolution}). Residents, not casualties.`,

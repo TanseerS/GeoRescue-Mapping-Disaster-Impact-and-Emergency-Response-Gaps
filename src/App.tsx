@@ -60,7 +60,8 @@ export default function App() {
   const [mapStyle, setMapStyle] = useState<ResolvedMapStyle | null>(null);
   const [areaKey, setAreaKey] = useState<string | null>(null);
   const [lastAreaQuery, setLastAreaQuery] = useState<FacilityQuery | null>(null);
-  const [collapsed, setCollapsed] = useState(false);
+  // Below 1280 px the sidebar starts collapsed so the map keeps most of the width.
+  const [collapsed, setCollapsed] = useState(() => window.innerWidth < 1280);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const { feed, status, error, refresh } = useEarthquakes(filters.timeRange);

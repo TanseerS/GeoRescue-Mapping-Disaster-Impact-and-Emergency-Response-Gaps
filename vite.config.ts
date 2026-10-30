@@ -8,6 +8,9 @@ export default defineConfig({
     chunkSizeWarningLimit: 1200,
     rollupOptions: {
       output: {
+        // Emit the MapLibre worker (an .mjs asset) as .js so any static host serves it with a JavaScript MIME type.
+        assetFileNames: (asset) =>
+          asset.names?.some((n) => n.endsWith(".mjs")) ? "assets/[name]-[hash].js" : "assets/[name]-[hash][extname]",
         manualChunks: {
           maplibre: ["maplibre-gl"],
           charts: ["recharts"],

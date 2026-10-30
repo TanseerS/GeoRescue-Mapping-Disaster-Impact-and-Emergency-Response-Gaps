@@ -297,18 +297,25 @@ Resources:
             ApiId: !Ref HttpApi
             Path: /health
             Method: GET
+        # Each population request fans out to the external WorldPop service, so these routes get tighter limits.
         Population:
           Type: HttpApi
           Properties:
             ApiId: !Ref HttpApi
             Path: /population
             Method: GET
+            RouteSettings:
+              ThrottlingBurstLimit: 5
+              ThrottlingRateLimit: 1
         PopulationTasks:
           Type: HttpApi
           Properties:
             ApiId: !Ref HttpApi
             Path: /population/tasks
             Method: GET
+            RouteSettings:
+              ThrottlingBurstLimit: 10
+              ThrottlingRateLimit: 5
 
   # ─── Monitoring ─────────────────────────────────────────────────────────────
   AlarmTopic:

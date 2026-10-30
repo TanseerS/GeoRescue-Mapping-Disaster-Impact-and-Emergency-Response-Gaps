@@ -34,8 +34,16 @@ describe("fetchPopulation", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it("surfaces API errors", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ error: "The WorldPop population service is unavailable. Retry shortly." }, 502)));
+  it("retries a failed submission once, then surfaces the API error", async () => {
+    const fail = () => json({ error: "The WorldPop population service is unavailable. Retry shortly." }, 502);
+    const flaky = vi.fn().mockResolvedValueOnce(fail()).mockResolvedValueOnce(json(complete));
+    vi.stubGlobal("fetch", flaky);
+    expect((await fetchPopulation("https://api.example.com", 3, 4, [10], undefined, 1)).results[0].population).toBe(1200);
+    expect(flaky).toHaveBeenCalledTimes(2);
+
+    const down = vi.fn().mockImplementation(async () => fail());
+    vi.stubGlobal("fetch", down);
     await expect(fetchPopulation("https://api.example.com", 1, 2, [10], undefined, 1)).rejects.toThrow("WorldPop population service is unavailable");
+    expect(down).toHaveBeenCalledTimes(2);
   });
 });

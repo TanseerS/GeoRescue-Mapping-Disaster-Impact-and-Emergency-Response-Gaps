@@ -192,10 +192,11 @@ export function createApi(config: ApiConfig, deps: ApiDeps) {
 
   function populationParams(query: ApiRequest["query"]) {
     if (!deps.population) throw new HttpError(404, "Population estimates are not enabled.");
-    const lat = Number(query.lat);
-    const lon = Number(query.lon);
-    if (query.lat === undefined || !Number.isFinite(lat) || Math.abs(lat) > 90) throw new HttpError(400, "lat must be a latitude between -90 and 90.");
-    if (query.lon === undefined || !Number.isFinite(lon) || Math.abs(lon) > 180) throw new HttpError(400, "lon must be a longitude between -180 and 180.");
+    // Number("") is 0, so blank values must be rejected explicitly.
+    const lat = query.lat?.trim() ? Number(query.lat) : NaN;
+    const lon = query.lon?.trim() ? Number(query.lon) : NaN;
+    if (!Number.isFinite(lat) || Math.abs(lat) > 90) throw new HttpError(400, "lat must be a latitude between -90 and 90.");
+    if (!Number.isFinite(lon) || Math.abs(lon) > 180) throw new HttpError(400, "lon must be a longitude between -180 and 180.");
     const radii = (query.radii ?? "10,25,50").split(",").map((r) => Number(r.trim()));
     const valid =
       radii.length >= 1 &&

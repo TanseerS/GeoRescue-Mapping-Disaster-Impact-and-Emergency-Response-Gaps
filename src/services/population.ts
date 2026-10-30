@@ -63,7 +63,16 @@ export async function fetchPopulation(
   if (cached) return cached;
 
   const params = new URLSearchParams({ lat: latitude.toFixed(4), lon: longitude.toFixed(4), radii: radii.join(",") });
-  let { status, body } = await getJson(`${apiBaseUrl}/population?${params.toString()}`, signal);
+  // WorldPop task submission is occasionally slow enough to fail once; retry a single time before reporting.
+  let first: Awaited<ReturnType<typeof getJson>>;
+  try {
+    first = await getJson(`${apiBaseUrl}/population?${params.toString()}`, signal);
+  } catch (err) {
+    if (signal?.aborted) throw err;
+    await sleep(pollIntervalMs ?? 3000, signal);
+    first = await getJson(`${apiBaseUrl}/population?${params.toString()}`, signal);
+  }
+  let { status, body } = first;
   const started = Date.now();
   while (status === 202) {
     if (Date.now() - started > POLL_TIMEOUT_MS) throw new Error("WorldPop is taking too long to respond. Retry shortly.");

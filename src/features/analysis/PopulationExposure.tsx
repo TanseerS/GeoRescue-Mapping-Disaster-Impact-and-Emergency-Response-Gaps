@@ -45,7 +45,9 @@ export function PopulationExposure({ state, onRetry }: PopulationExposureProps) 
       <div className="grid grid-cols-3 gap-2">
         {data.results.map((r) => (
           <div key={r.radiusKm} className="panel-muted px-2.5 py-2.5 text-center">
-            <p className="num text-base font-semibold text-white">≈ {formatPopulation(r.population)}</p>
+            <p className="num text-base font-semibold text-white">
+              {r.population > 0 ? `≈ ${formatPopulation(r.population)}` : "0"}
+            </p>
             <p className="text-[11px] text-ink-400">residents ≤ {r.radiusKm} km</p>
           </div>
         ))}

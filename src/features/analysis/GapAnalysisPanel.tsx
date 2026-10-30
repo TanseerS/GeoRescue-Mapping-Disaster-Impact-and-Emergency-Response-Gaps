@@ -317,11 +317,11 @@ function AnalysisResult(props: GapAnalysisPanelProps & { analysis: GapAnalysis }
             <BarChart data={chartData} margin={{ top: 6, right: 4, bottom: 0, left: -18 }} barGap={2}>
               <CartesianGrid vertical={false} stroke="rgba(148,163,184,0.08)" />
               <XAxis dataKey="radius" tick={{ fill: "#94a3b8", fontSize: 11 }} tickLine={false} axisLine={{ stroke: "rgba(148,163,184,0.15)" }} />
-              <YAxis tick={{ fill: "#64748b", fontSize: 10 }} tickLine={false} axisLine={false} allowDecimals={false} width={44} tickFormatter={formatCompact} />
+              <YAxis tick={{ fill: "#8a99b0", fontSize: 10 }} tickLine={false} axisLine={false} allowDecimals={false} width={44} tickFormatter={formatCompact} />
               <Tooltip cursor={{ fill: "rgba(148,163,184,0.06)" }} content={<ChartTooltip formatLabel={(l) => `Within ${l}`} unit="facilities" />} />
               <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: "#cbd5e1" }} />
-              <Bar dataKey="Health" name="Hospitals + clinics" fill={FACILITY_COLORS.hospital} radius={[4, 4, 0, 0]} maxBarSize={22} />
-              <Bar dataKey="Emergency" name="Emergency services" fill={FACILITY_COLORS.emergency} radius={[4, 4, 0, 0]} maxBarSize={22} />
+              <Bar isAnimationActive={false} dataKey="Health" name="Hospitals + clinics" fill={FACILITY_COLORS.hospital} radius={[4, 4, 0, 0]} maxBarSize={22} />
+              <Bar isAnimationActive={false} dataKey="Emergency" name="Emergency services" fill={FACILITY_COLORS.emergency} radius={[4, 4, 0, 0]} maxBarSize={22} />
             </BarChart>
           </ResponsiveContainer>
         </div>

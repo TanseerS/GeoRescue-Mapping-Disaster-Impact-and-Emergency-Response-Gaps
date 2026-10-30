@@ -2,7 +2,7 @@ import { Activity, Building2, CheckCircle2, CircleDashed, Cloud, Github, ShieldA
 import type { ReactNode } from "react";
 import { Logo } from "../components/Logo";
 import { IconButton } from "../components/ui/Button";
-import { ANALYSIS_RADII_KM, SEVERITIES, SIGNIFICANT_MAGNITUDE } from "../config/constants";
+import { ANALYSIS_RADII_KM, FACILITY_SEARCH_RADIUS_KM, SEVERITIES, SIGNIFICANT_MAGNITUDE } from "../config/constants";
 import { env, isAwsMapConfigured } from "../config/env";
 import { PipelineStatus } from "../features/pipeline/PipelineStatus";
 import type { ResolvedMapStyle } from "../services/mapStyle";
@@ -66,8 +66,8 @@ export function AboutPage({ mapStyle, source, fallbackReason, onClose }: AboutPa
             </Card>
             <Card icon={<Building2 className="h-4 w-4" />} title="Facilities · OpenStreetMap">
               <p>
-                Hospitals, fire stations, police stations and ambulance stations are queried on demand from the Overpass API
-                around a selected epicenter (within {Math.max(...ANALYSIS_RADII_KM)} km) or across the visible map area.
+                Hospitals, clinics, fire stations, ambulance stations and police stations are queried on demand from the
+                Overpass API around a selected epicenter (within {FACILITY_SEARCH_RADIUS_KM} km) or across the visible map area.
                 No facility data is fabricated — if the service is unavailable, GeoRescue shows a retry state.
               </p>
             </Card>
@@ -84,7 +84,8 @@ export function AboutPage({ mapStyle, source, fallbackReason, onClose }: AboutPa
               </ul>
               <p>
                 “Significant” counts events of magnitude {SIGNIFICANT_MAGNITUDE}+. Gap analysis uses Turf.js great-circle
-                distances to count facilities within {ANALYSIS_RADII_KM.join(", ")} km and to find the nearest mapped hospital.
+                distances to count each facility type within three configurable radii (default {ANALYSIS_RADII_KM.join(" / ")} km),
+                find the nearest mapped hospital and fire station, and classify coverage by nearest-hospital distance.
               </p>
             </Card>
             <Card icon={<Cloud className="h-4 w-4" />} title="Map · Amazon Location Service">
@@ -116,9 +117,16 @@ export function AboutPage({ mapStyle, source, fallbackReason, onClose }: AboutPa
             <p className="mb-1 font-semibold text-amber-200">Important limitations</p>
             Proximity is an estimate. Straight-line distance does not account for roads, terrain, travel time, damage,
             facility capacity, staffing or real-time availability. OpenStreetMap coverage varies widely by region, so the
-            absence of a mapped facility does not prove none exists. GeoRescue is a decision-support visualization, not an
-            emergency dispatch or alerting system.
+            absence of a mapped facility does not prove none exists. Population exposure figures are modelled WorldPop 2020
+            estimates of residents — not casualty, damage or real-time presence estimates. GeoRescue is a decision-support
+            visualization, not an emergency dispatch or alerting system.
           </div>
+
+          <p className="mt-3 text-[11.5px] leading-relaxed text-ink-500">
+            Data attribution: earthquakes courtesy of the U.S. Geological Survey · facilities © OpenStreetMap contributors (ODbL)
+            · population © WorldPop (www.worldpop.org), CC BY 4.0 · basemap © CARTO / OpenStreetMap contributors or © AWS / HERE
+            via Amazon Location Service.
+          </p>
 
           <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink-400">
             <span>Built with React, TypeScript, MapLibre GL JS, Turf.js and Recharts.</span>

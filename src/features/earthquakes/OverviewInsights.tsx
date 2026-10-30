@@ -29,7 +29,7 @@ interface OverviewInsightsProps {
   onFocusRegion: (region: string) => void;
 }
 
-const AXIS_TICK = { fill: "#64748b", fontSize: 10 };
+const AXIS_TICK = { fill: "#8a99b0", fontSize: 10 };
 const DEPTH_COLOR = Object.fromEntries(DEPTH_CLASSES.map((d) => [d.id, d.color])) as Record<string, string>;
 
 function OverviewInsightsImpl({ earthquakes, stats, feed, timeRange, now, facilities, onSelect, onFocusRegion }: OverviewInsightsProps) {
@@ -127,7 +127,7 @@ function OverviewInsightsImpl({ earthquakes, stats, feed, timeRange, now, facili
                 <XAxis dataKey="label" tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: "rgba(148,163,184,0.15)" }} tickFormatter={(v) => `M${v}`} />
                 <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false} width={44} tickFormatter={formatCompact} />
                 <Tooltip cursor={{ fill: "rgba(148,163,184,0.06)" }} content={<ChartTooltip formatLabel={(l) => `Magnitude ${l}.0 – ${l}.9`} />} />
-                <Bar dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={28}>
+                <Bar isAnimationActive={false} dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={28}>
                   {histogram.map((bin) => (
                     <Cell key={bin.label} fill={SEVERITY_BY_ID[bin.severity].color} fillOpacity={0.85} />
                   ))}
@@ -146,7 +146,7 @@ function OverviewInsightsImpl({ earthquakes, stats, feed, timeRange, now, facili
               <XAxis dataKey="label" tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: "rgba(148,163,184,0.15)" }} interval={0} />
               <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false} width={44} tickFormatter={formatCompact} />
               <Tooltip cursor={{ fill: "rgba(148,163,184,0.06)" }} content={<ChartTooltip formatLabel={(l) => `Depth ${l} km`} />} />
-              <Bar dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={30}>
+              <Bar isAnimationActive={false} dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={30}>
                 {depths.map((bin) => (
                   <Cell key={bin.label} fill={DEPTH_COLOR[bin.depthClass]} fillOpacity={0.9} />
                 ))}
@@ -171,7 +171,7 @@ function OverviewInsightsImpl({ earthquakes, stats, feed, timeRange, now, facili
               <XAxis dataKey="label" tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: "rgba(148,163,184,0.15)" }} interval="preserveStartEnd" minTickGap={24} />
               <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false} width={44} tickFormatter={formatCompact} />
               <Tooltip cursor={{ fill: "rgba(148,163,184,0.06)" }} content={<ChartTooltip />} />
-              <Bar dataKey="count" fill="#38bdf8" fillOpacity={0.8} radius={[3, 3, 0, 0]} />
+              <Bar isAnimationActive={false} dataKey="count" fill="#38bdf8" fillOpacity={0.8} radius={[3, 3, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
