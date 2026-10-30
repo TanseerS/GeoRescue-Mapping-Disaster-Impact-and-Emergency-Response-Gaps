@@ -148,7 +148,8 @@ export function FacilitiesPanel(props: FacilitiesPanelProps) {
 
             <div className="flex items-center justify-between gap-2 px-4 pb-1 pt-3">
               <p className="text-[11px] text-ink-400">
-                <span className="num text-ink-200">{formatNumber(visible.length)}</span> facilities ·{" "}
+                <span className="num text-ink-200">{formatNumber(visible.length)}</span>{" "}
+                {visible.length === 1 ? "facility" : "facilities"} ·{" "}
                 {source === "event" ? `within ${FACILITY_SEARCH_RADIUS_KM} km of epicenter` : selected ? "distance from epicenter" : "distance from area center"}
               </p>
               <div className="flex rounded-lg bg-white/[0.03] p-0.5" role="radiogroup" aria-label="Facility type">

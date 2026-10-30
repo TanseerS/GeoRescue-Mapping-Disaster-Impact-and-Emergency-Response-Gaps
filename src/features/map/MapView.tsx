@@ -1,5 +1,7 @@
-import maplibregl, { type GeoJSONSource, type MapGeoJSONFeature } from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
+import type { GeoJSONSource, MapGeoJSONFeature } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { useEffect, useRef, useState } from "react";
 import { INITIAL_BOUNDS } from "../../config/constants";
 import { fallbackMapStyle, resolveMapStyle, type ResolvedMapStyle } from "../../services/mapStyle";
@@ -17,6 +19,9 @@ import {
   selectedToGeoJSON,
 } from "./mapData";
 import { applyLayerVisibility, installLayers, LAYERS, SOURCES } from "./mapLayers";
+
+// MapLibre resolves its worker relative to its own module URL, which bundling breaks; point it at the emitted asset.
+maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
 export interface FocusRequest {
   id: number;
@@ -112,13 +117,14 @@ export function MapView(props: MapViewProps) {
     };
 
     map.on("error", (event) => {
-      if (event.error?.name === "AbortError") return; // cancelled requests during a style switch
-      const status = (event.error as { status?: number } | undefined)?.status;
+      const error = event.error as { name?: string; message?: string; status?: number } | undefined;
+      if (error?.name === "AbortError") return; // cancelled requests during a style switch
+      const status = error?.status;
       const authFailure = status === 401 || status === 403;
       if (style.provider === "amazon-location" && (!loaded || authFailure)) {
         if (fallbackPending) return;
         fallbackPending = true;
-        console.warn("Amazon Location basemap unavailable, switching to the open fallback basemap.", event.error?.message);
+        console.warn("Amazon Location basemap unavailable, switching to the open fallback basemap.", error?.message);
         // A rejected API key still returns the style descriptor, so tile 401/403s also trigger the fallback.
         // Switch once pending requests settle to avoid aborting them mid-flight.
         if (loaded) map.once("idle", switchToFallback);

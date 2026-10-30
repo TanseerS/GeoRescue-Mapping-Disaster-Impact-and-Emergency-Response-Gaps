@@ -21,7 +21,7 @@ Built for the **AWS Builder Weekend Challenge**.
 
 ## Tech stack
 
-React 18 · TypeScript · Vite 5 · Tailwind CSS 3 · MapLibre GL JS 4 · Turf.js 7 · Recharts 2 · Lucide icons · Vitest
+React 18 · TypeScript · Vite 5 · Tailwind CSS 3 · MapLibre GL JS 6 · Turf.js 7 · Recharts 2 · Lucide icons · Vitest
 
 ## Getting started
 
