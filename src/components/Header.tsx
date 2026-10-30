@@ -1,8 +1,8 @@
-import { AlertTriangle, Map as MapIcon, Menu, RefreshCw } from "lucide-react";
+import { AlertTriangle, Cloud, Map as MapIcon, Menu, RefreshCw, Satellite } from "lucide-react";
 import { FEEDS } from "../config/constants";
 import type { FeedStatus } from "../hooks/useEarthquakes";
 import type { ResolvedMapStyle } from "../services/mapStyle";
-import type { TimeRange } from "../types/earthquake";
+import type { DataSource, TimeRange } from "../types/earthquake";
 import { formatClock, formatDateTime, formatRelative } from "../utils/format";
 import { Logo } from "./Logo";
 import { Spinner } from "./ui/Spinner";
@@ -12,6 +12,8 @@ interface HeaderProps {
   lastUpdated: number | null;
   timeRange: TimeRange;
   mapStyle: ResolvedMapStyle | null;
+  source: DataSource | null;
+  fallbackReason: string | null;
   now: number;
   onRefresh: () => void;
   onOpenMenu: () => void;
@@ -24,7 +26,29 @@ const STATUS_META: Record<FeedStatus, { label: string; dot: string; text: string
   error: { label: "Feed error", dot: "bg-rose-500", text: "text-rose-300" },
 };
 
-export function Header({ status, lastUpdated, timeRange, mapStyle, now, onRefresh, onOpenMenu }: HeaderProps) {
+export const SOURCE_META: Record<DataSource, { label: string; short: string; detail: string; className: string }> = {
+  "aws-api": {
+    label: "AWS API",
+    short: "AWS",
+    detail: "Served by the GeoRescue AWS pipeline (EventBridge → Lambda → S3 → API Gateway)",
+    className: "border-orange-300/25 bg-orange-300/[0.07] text-orange-200",
+  },
+  "usgs-direct": {
+    label: "USGS direct",
+    short: "USGS",
+    detail: "Loaded directly from the USGS GeoJSON feed",
+    className: "border-white/[0.07] bg-white/[0.03] text-ink-300",
+  },
+  "usgs-fallback": {
+    label: "USGS fallback",
+    short: "USGS*",
+    detail: "AWS API unavailable — loaded directly from the USGS GeoJSON feed",
+    className: "border-amber-300/30 bg-amber-300/[0.08] text-amber-200",
+  },
+};
+
+export function Header({ status, lastUpdated, timeRange, mapStyle, source, fallbackReason, now, onRefresh, onOpenMenu }: HeaderProps) {
+  const sourceMeta = source ? SOURCE_META[source] : null;
   const meta = STATUS_META[status];
   const busy = status === "loading" || status === "refreshing";
 
@@ -50,6 +74,16 @@ export function Header({ status, lastUpdated, timeRange, mapStyle, now, onRefres
       </div>
 
       <div className="ml-auto flex items-center gap-2 sm:gap-3">
+        {sourceMeta && source && (
+          <span
+            className={`hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium lg:inline-flex ${sourceMeta.className}`}
+            title={fallbackReason ? `${sourceMeta.detail}. Reason: ${fallbackReason}` : sourceMeta.detail}
+          >
+            {source === "aws-api" ? <Cloud className="h-3.5 w-3.5" /> : source === "usgs-fallback" ? <AlertTriangle className="h-3.5 w-3.5" /> : <Satellite className="h-3.5 w-3.5" />}
+            Data: {sourceMeta.label}
+          </span>
+        )}
+
         {mapStyle && (
           <span
             className="hidden items-center gap-1.5 rounded-full border border-white/[0.07] bg-white/[0.03] px-2.5 py-1 text-[11px] text-ink-300 xl:inline-flex"
@@ -70,7 +104,9 @@ export function Header({ status, lastUpdated, timeRange, mapStyle, now, onRefres
             <span className={`relative h-2 w-2 rounded-full ${meta.dot}`} />
           </span>
           <span className={`text-xs font-medium ${meta.text}`}>{meta.label}</span>
-          <span className="hidden text-[11px] text-ink-400 sm:inline">USGS · {FEEDS[timeRange].short}</span>
+          <span className="hidden text-[11px] text-ink-400 sm:inline" title={sourceMeta?.detail}>
+            {sourceMeta?.short ?? "USGS"} · {FEEDS[timeRange].short}
+          </span>
         </div>
 
         <div className="hidden text-right leading-tight md:block" title={lastUpdated ? formatDateTime(lastUpdated) : undefined}>

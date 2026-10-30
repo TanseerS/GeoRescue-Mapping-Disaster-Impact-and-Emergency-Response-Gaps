@@ -8,6 +8,8 @@ interface ImportMetaEnv {
   readonly VITE_FALLBACK_MAP_STYLE_URL?: string;
   readonly VITE_USGS_FEED_BASE_URL?: string;
   readonly VITE_OVERPASS_ENDPOINTS?: string;
+  readonly VITE_API_BASE_URL?: string;
+  readonly VITE_API_FALLBACK_TO_USGS?: string;
 }
 
 interface ImportMeta {

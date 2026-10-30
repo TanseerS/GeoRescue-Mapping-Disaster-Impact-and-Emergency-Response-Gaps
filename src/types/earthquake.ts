@@ -21,7 +21,15 @@ export interface Earthquake {
   severity: SeverityLevel;
 }
 
+/** Where a feed was loaded from: the GeoRescue AWS API or the USGS feed directly. */
+export type DataSource = "aws-api" | "usgs-direct" | "usgs-fallback";
+
 export interface EarthquakeFeed {
+  source: DataSource;
+  /** Why the app fell back to USGS (only for "usgs-fallback"). */
+  fallbackReason: string | null;
+  /** When the AWS pipeline last ingested this data (epoch ms, AWS API only). */
+  ingestedAt: number | null;
   earthquakes: Earthquake[];
   /** Feed generation time reported by USGS (epoch ms). */
   generatedAt: number;
@@ -68,6 +76,9 @@ export interface UsgsFeedResponse {
     generated: number;
     title: string;
     count: number;
+    /** Present on responses from the GeoRescue AWS API. */
+    ingestedAt?: number;
+    source?: string;
   };
   features: UsgsFeature[];
 }

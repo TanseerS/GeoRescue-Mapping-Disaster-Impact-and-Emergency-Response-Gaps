@@ -9,6 +9,10 @@ const DEFAULT_OVERPASS = [
 ];
 
 export const env = {
+  /** GeoRescue AWS API (API Gateway URL). Empty means the browser reads USGS directly. */
+  apiBaseUrl: trim(import.meta.env.VITE_API_BASE_URL).replace(/\/+$/, ""),
+  /** When the AWS API fails, fall back to the direct USGS feed (default true). */
+  apiFallbackToUsgs: trim(import.meta.env.VITE_API_FALLBACK_TO_USGS).toLowerCase() !== "false",
   aws: {
     region: trim(import.meta.env.VITE_AWS_REGION) || "us-east-1",
     apiKey: trim(import.meta.env.VITE_AWS_LOCATION_API_KEY),
@@ -26,3 +30,5 @@ export const env = {
 };
 
 export const isAwsMapConfigured = (): boolean => env.aws.apiKey.length > 0;
+
+export const isAwsApiConfigured = (): boolean => env.apiBaseUrl.length > 0;

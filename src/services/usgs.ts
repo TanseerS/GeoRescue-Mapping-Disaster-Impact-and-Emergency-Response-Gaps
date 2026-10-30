@@ -1,6 +1,6 @@
 import { FEEDS } from "../config/constants";
 import { env } from "../config/env";
-import type { Earthquake, EarthquakeFeed, TimeRange, UsgsFeature, UsgsFeedResponse } from "../types/earthquake";
+import type { DataSource, Earthquake, EarthquakeFeed, TimeRange, UsgsFeature, UsgsFeedResponse } from "../types/earthquake";
 import { getSeverity } from "../utils/severity";
 
 export function feedUrl(range: TimeRange): string {
@@ -34,7 +34,12 @@ export function normalizeFeature(feature: UsgsFeature): Earthquake | null {
   };
 }
 
-export function normalizeFeed(data: UsgsFeedResponse, fetchedAt: number = Date.now()): EarthquakeFeed {
+export function normalizeFeed(
+  data: UsgsFeedResponse,
+  fetchedAt: number = Date.now(),
+  source: DataSource = "usgs-direct",
+  fallbackReason: string | null = null,
+): EarthquakeFeed {
   const earthquakes: Earthquake[] = [];
   let skipped = 0;
   for (const feature of data.features ?? []) {
@@ -44,6 +49,9 @@ export function normalizeFeed(data: UsgsFeedResponse, fetchedAt: number = Date.n
   }
   earthquakes.sort((a, b) => b.time - a.time);
   return {
+    source,
+    fallbackReason,
+    ingestedAt: typeof data.metadata?.ingestedAt === "number" ? data.metadata.ingestedAt : null,
     earthquakes,
     generatedAt: data.metadata?.generated ?? fetchedAt,
     fetchedAt,
@@ -52,6 +60,7 @@ export function normalizeFeed(data: UsgsFeedResponse, fetchedAt: number = Date.n
   };
 }
 
+/** Fetches the USGS summary feed directly from the browser. */
 export async function fetchEarthquakes(range: TimeRange, signal?: AbortSignal): Promise<EarthquakeFeed> {
   let response: Response;
   try {

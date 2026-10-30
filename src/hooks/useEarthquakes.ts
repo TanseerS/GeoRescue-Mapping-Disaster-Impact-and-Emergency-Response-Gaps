@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AUTO_REFRESH_MS } from "../config/constants";
-import { fetchEarthquakes } from "../services/usgs";
+import { loadEarthquakes } from "../services/earthquakeSource";
 import type { EarthquakeFeed, TimeRange } from "../types/earthquake";
 
 export type FeedStatus = "loading" | "refreshing" | "ready" | "error";
@@ -41,7 +41,7 @@ export function useEarthquakes(range: TimeRange): EarthquakeState {
       if (!cached) setFeed(null);
 
       try {
-        const result = await fetchEarthquakes(range, ctrl.signal);
+        const result = await loadEarthquakes(range, ctrl.signal);
         if (ctrl.signal.aborted) return;
         cache.current.set(range, result);
         setFeed(result);

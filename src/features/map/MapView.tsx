@@ -94,6 +94,7 @@ export function MapView(props: MapViewProps) {
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: style.url,
+      transformRequest: style.transformRequest,
       bounds: INITIAL_BOUNDS,
       fitBoundsOptions: { padding: 24 },
       minZoom: 0,

@@ -4,7 +4,9 @@ import { Logo } from "../components/Logo";
 import { IconButton } from "../components/ui/Button";
 import { ANALYSIS_RADII_KM, SEVERITIES, SIGNIFICANT_MAGNITUDE } from "../config/constants";
 import { env, isAwsMapConfigured } from "../config/env";
+import { PipelineStatus } from "../features/pipeline/PipelineStatus";
 import type { ResolvedMapStyle } from "../services/mapStyle";
+import type { DataSource } from "../types/earthquake";
 
 const REPO_URL = "https://github.com/TanseerS/GeoRescue-Mapping-Disaster-Impact-and-Emergency-Response-Gaps";
 
@@ -20,7 +22,14 @@ function Card({ icon, title, children }: { icon: ReactNode; title: string; child
   );
 }
 
-export function AboutPage({ mapStyle, onClose }: { mapStyle: ResolvedMapStyle | null; onClose: () => void }) {
+interface AboutPageProps {
+  mapStyle: ResolvedMapStyle | null;
+  source: DataSource | null;
+  fallbackReason: string | null;
+  onClose: () => void;
+}
+
+export function AboutPage({ mapStyle, source, fallbackReason, onClose }: AboutPageProps) {
   const awsConfigured = isAwsMapConfigured();
   return (
     <div className="absolute inset-0 z-30 overflow-y-auto bg-ink-950/95 backdrop-blur-sm scrollbar-thin animate-fade-in">
@@ -51,7 +60,8 @@ export function AboutPage({ mapStyle, onClose }: { mapStyle: ResolvedMapStyle | 
               <p>
                 Live GeoJSON summary feeds from the U.S. Geological Survey (past 24 hours, 7 days and 30 days), refreshed
                 automatically every 5 minutes. Coordinates, magnitude, depth, time and location descriptions come directly
-                from USGS; records without a magnitude or location are excluded rather than estimated.
+                from USGS; records without a magnitude or location are excluded rather than estimated. When the AWS pipeline
+                is connected, the same feed is ingested into Amazon S3 every 5 minutes and served through API Gateway.
               </p>
             </Card>
             <Card icon={<Building2 className="h-4 w-4" />} title="Facilities · OpenStreetMap">
@@ -96,6 +106,10 @@ export function AboutPage({ mapStyle, onClose }: { mapStyle: ResolvedMapStyle | 
                 and region to render Amazon Location maps. If the AWS style cannot load, GeoRescue falls back automatically.
               </p>
             </Card>
+          </div>
+
+          <div className="mt-3">
+            <PipelineStatus source={source} fallbackReason={fallbackReason} />
           </div>
 
           <div className="mt-3 rounded-xl border border-amber-300/15 bg-amber-300/[0.04] p-4 text-[13px] leading-relaxed text-amber-100/85">

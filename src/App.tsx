@@ -143,6 +143,8 @@ export default function App() {
         lastUpdated={feed?.fetchedAt ?? null}
         timeRange={filters.timeRange}
         mapStyle={mapStyle}
+        source={feed?.source ?? null}
+        fallbackReason={feed?.fallbackReason ?? null}
         now={now}
         onRefresh={refresh}
         onOpenMenu={() => setDrawerOpen(true)}

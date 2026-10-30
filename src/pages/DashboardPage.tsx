@@ -168,7 +168,14 @@ export function DashboardPage(props: DashboardPageProps) {
         </div>
       </aside>
 
-      {view === "about" && <AboutPage mapStyle={props.mapStyle} onClose={() => props.onViewChange("overview")} />}
+      {view === "about" && (
+        <AboutPage
+          mapStyle={props.mapStyle}
+          source={props.feed?.source ?? null}
+          fallbackReason={props.feed?.fallbackReason ?? null}
+          onClose={() => props.onViewChange("overview")}
+        />
+      )}
     </main>
   );
 }
