@@ -8,7 +8,7 @@
 
 React · TypeScript · MapLibre GL JS · Turf.js · AWS Lambda · Amazon S3 · API Gateway · EventBridge Scheduler · Amazon Location Service
 
-[Features](#key-features) · [Methodology](#response-gap-analysis-methodology) · [Architecture](#architecture) · [Run locally](#local-setup) · [Deploy](#aws-deployment) · [Submission](docs/HACKATHON-SUBMISSION.md)
+[Features](#key-features) · [Methodology](#response-gap-analysis-methodology) · [Architecture](#architecture) · [Run locally](#local-setup) · [Deploy](#aws-deployment) · [Submission](docs/HACKATHON-SUBMISSION.md) · [Technical article](docs/ARTICLE.md)
 
 </div>
 
