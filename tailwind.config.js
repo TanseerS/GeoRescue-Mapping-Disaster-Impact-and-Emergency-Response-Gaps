@@ -29,7 +29,7 @@ export default {
           strong: "#e11d48",
         },
         hospital: "#38bdf8",
-        emergency: "#a78bfa",
+        emergency: "#8b5cf6",
       },
       boxShadow: {
         panel: "0 1px 0 0 rgba(255,255,255,0.03) inset, 0 12px 32px -12px rgba(0,0,0,0.6)",

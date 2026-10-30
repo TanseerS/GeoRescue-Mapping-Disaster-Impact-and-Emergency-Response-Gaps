@@ -97,12 +97,35 @@ export function eventTimeline(earthquakes: Earthquake[], range: TimeRange, now: 
   return buckets;
 }
 
+/** Abbreviations USGS uses in place strings for frequently reporting regions. */
+const REGION_NAMES: Record<string, string> = {
+  CA: "California",
+  NV: "Nevada",
+  OR: "Oregon",
+  WA: "Washington",
+  UT: "Utah",
+  ID: "Idaho",
+  MT: "Montana",
+  WY: "Wyoming",
+  NM: "New Mexico",
+  AZ: "Arizona",
+  OK: "Oklahoma",
+  KS: "Kansas",
+  CO: "Colorado",
+  TN: "Tennessee",
+  MO: "Missouri",
+  AR: "Arkansas",
+  MX: "Mexico",
+  PR: "Puerto Rico",
+};
+
 /** Groups events by the region part of the USGS place string ("10 km SSW of X, Region"). */
 export function topRegions(earthquakes: Earthquake[], limit = 5): { region: string; count: number; maxMag: number }[] {
   const map = new Map<string, { count: number; maxMag: number }>();
   for (const q of earthquakes) {
     const parts = q.place.split(",");
-    const region = (parts.length > 1 ? parts[parts.length - 1] : q.place.replace(/^.*\bof\s+/i, "")).trim() || "Unknown";
+    const raw = (parts.length > 1 ? parts[parts.length - 1] : q.place.replace(/^.*\bof\s+/i, "")).trim() || "Unknown";
+    const region = REGION_NAMES[raw] ?? raw;
     const entry = map.get(region) ?? { count: 0, maxMag: -Infinity };
     entry.count += 1;
     entry.maxMag = Math.max(entry.maxMag, q.magnitude);

@@ -52,9 +52,13 @@ export const FACILITY_SEARCH_RADIUS_KM = 50;
 /** Auto-refresh interval for the live USGS feed. USGS regenerates summary feeds every minute. */
 export const AUTO_REFRESH_MS = 5 * 60 * 1000;
 
-export const INITIAL_VIEW = { center: [20, 18] as [number, number], zoom: 1.6 };
+/** Global view framing every inhabited continent. */
+export const INITIAL_BOUNDS: [[number, number], [number, number]] = [
+  [-168, -48],
+  [178, 68],
+];
 
 export const FACILITY_COLORS = {
   hospital: "#38bdf8",
-  emergency: "#a78bfa",
+  emergency: "#8b5cf6",
 };
