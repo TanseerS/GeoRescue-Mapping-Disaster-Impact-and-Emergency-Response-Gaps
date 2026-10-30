@@ -47,6 +47,12 @@ GeoRescue joins these three sources in one browser interface and computes, in se
 
 <p align="center"><img src="docs/screenshots/mobile.png" alt="GeoRescue on a phone" width="260"></p>
 
+### Demo video
+
+[![Silent GeoRescue demo walkthrough](docs/demo/georescue-demo-poster.jpg)](docs/demo/georescue-demo.mp4)
+
+**[▶ Watch the silent demo (2:11, 1080p MP4)](docs/demo/georescue-demo.mp4).** This is an unedited walkthrough of the real application with live USGS, OpenStreetMap and WorldPop data. It covers the global map, the visualization modes, analytics, selecting an earthquake, nearby facilities, the intelligence brief, configurable gap analysis, population exposure and the data pipeline. On-screen captions explain each step. Data is served by the GeoRescue API running locally (`npm run local`), not a deployed AWS stack.
+
 ## Key features
 
 | Area | What you get |

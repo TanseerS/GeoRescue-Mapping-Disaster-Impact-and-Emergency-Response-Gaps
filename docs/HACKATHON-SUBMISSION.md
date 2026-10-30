@@ -110,4 +110,4 @@ https://github.com/TanseerS/GeoRescue-Mapping-Disaster-Impact-and-Emergency-Resp
 
 **[Demo video URL: to be added]**
 
-*(Recording plan: [DEMO-VIDEO-SCRIPT.md](DEMO-VIDEO-SCRIPT.md))*
+A silent 2:11 walkthrough of the real application is in the repository: [demo/georescue-demo.mp4](demo/georescue-demo.mp4). It uses live data served by the GeoRescue API running locally, with on-screen captions. A narrated version can be recorded with [DEMO-VIDEO-SCRIPT.md](DEMO-VIDEO-SCRIPT.md).
