@@ -116,6 +116,36 @@ Resources:
     Properties:
       RetentionInDays: !Ref LogRetentionDays
 
+  # Explicit role instead of SAM's default AWSLambdaBasicExecutionRole, which allows writing to any log group.
+  IngestFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ingest-least-privilege
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: WriteOwnLogs
+                Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt IngestFunctionLogGroup.Arn
+              - Sid: ReadWriteEarthquakeData
+                Effect: Allow
+                Action: [s3:GetObject, s3:PutObject]
+                Resource:
+                  - !Sub "${DataBucket.Arn}/earthquakes/*"
+                  - !Sub "${DataBucket.Arn}/metadata/*"
+              - Sid: DistinguishMissingObjects # lets GetObject return 404 instead of 403 for absent keys
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt DataBucket.Arn
+
   IngestFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -133,25 +163,13 @@ Resources:
       Description: Fetches the USGS all_day feed, merges it into the rolling window and stores GeoJSON in S3.
       CodeUri: ./
       Handler: ingest.handler
+      Role: !GetAtt IngestFunctionRole.Arn
       Timeout: 90
       LoggingConfig:
         LogGroup: !Ref IngestFunctionLogGroup
       Environment:
         Variables:
           USGS_FEED_BASE_URL: https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary
-      Policies:
-        - Version: "2012-10-17"
-          Statement:
-            - Sid: ReadWriteEarthquakeData
-              Effect: Allow
-              Action: [s3:GetObject, s3:PutObject]
-              Resource:
-                - !Sub "${DataBucket.Arn}/earthquakes/*"
-                - !Sub "${DataBucket.Arn}/metadata/*"
-            - Sid: DistinguishMissingObjects # lets GetObject return 404 instead of 403 for absent keys
-              Effect: Allow
-              Action: s3:ListBucket
-              Resource: !GetAtt DataBucket.Arn
       # Scheduler invokes asynchronously: retry a failed run once, and drop it before the next run is due.
       EventInvokeConfig:
         MaximumRetryAttempts: 1
@@ -199,6 +217,35 @@ Resources:
         DestinationArn: !GetAtt ApiAccessLogGroup.Arn
         Format: '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","method":"$context.httpMethod","path":"$context.path","status":"$context.status","latencyMs":"$context.responseLatency","integrationError":"$context.integrationErrorMessage"}'
 
+  ApiFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: api-read-only
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: WriteOwnLogs
+                Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt ApiFunctionLogGroup.Arn
+              - Sid: ReadEarthquakeData
+                Effect: Allow
+                Action: s3:GetObject
+                Resource:
+                  - !Sub "${DataBucket.Arn}/earthquakes/*"
+                  - !Sub "${DataBucket.Arn}/metadata/*"
+              - Sid: DistinguishMissingObjects
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt DataBucket.Arn
+
   ApiFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -216,6 +263,7 @@ Resources:
       Description: Serves earthquake GeoJSON, ingestion metadata and health from S3.
       CodeUri: ./
       Handler: api.handler
+      Role: !GetAtt ApiFunctionRole.Arn
       Timeout: 10
       LoggingConfig:
         LogGroup: !Ref ApiFunctionLogGroup
@@ -223,19 +271,6 @@ Resources:
         Variables:
           STALE_AFTER_SECONDS: "900"
           CACHE_TTL_SECONDS: "30"
-      Policies:
-        - Version: "2012-10-17"
-          Statement:
-            - Sid: ReadEarthquakeData
-              Effect: Allow
-              Action: s3:GetObject
-              Resource:
-                - !Sub "${DataBucket.Arn}/earthquakes/*"
-                - !Sub "${DataBucket.Arn}/metadata/*"
-            - Sid: DistinguishMissingObjects
-              Effect: Allow
-              Action: s3:ListBucket
-              Resource: !GetAtt DataBucket.Arn
       Events:
         Earthquakes:
           Type: HttpApi
