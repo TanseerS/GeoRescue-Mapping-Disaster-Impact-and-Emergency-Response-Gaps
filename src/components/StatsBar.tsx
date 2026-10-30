@@ -29,8 +29,8 @@ function StatCard({ label, value, detail, icon, accent, loading, onClick, title 
     >
       <span className="pointer-events-none absolute -right-6 -top-6 h-16 w-16 rounded-full opacity-20 blur-2xl" style={{ backgroundColor: accent }} />
       <div className="flex items-center justify-between gap-2">
-        <p className="label-xs truncate">{label}</p>
-        <span className="shrink-0" style={{ color: accent }}>
+        <p className="label-xs truncate lg:max-[1399px]:!tracking-[0.06em]">{label}</p>
+        <span className="shrink-0 lg:max-[1399px]:hidden" style={{ color: accent }}>
           {icon}
         </span>
       </div>
@@ -74,7 +74,7 @@ export function StatsBar({ stats, loading, facilityCount, hospitalCount, analyze
         loading={loading}
       />
       <StatCard
-        label="Avg magnitude"
+        label="Avg mag."
         value={stats.averageMagnitude === null ? "—" : formatMagnitude(stats.averageMagnitude)}
         detail={stats.maxMagnitude === null ? "No events" : `Peak M ${formatMagnitude(stats.maxMagnitude)}`}
         icon={<Gauge className="h-4 w-4" />}

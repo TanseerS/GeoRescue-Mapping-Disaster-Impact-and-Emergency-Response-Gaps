@@ -3,7 +3,8 @@ import { useState } from "react";
 import { FACILITY_COLORS, SEVERITIES } from "../../config/constants";
 
 export function MapLegend({ showRings }: { showRings: boolean }) {
-  const [open, setOpen] = useState(true);
+  // Start collapsed on shorter screens so the legend does not cover the map.
+  const [open, setOpen] = useState(() => window.innerHeight >= 860);
   return (
     <div className="pointer-events-auto w-[210px] rounded-xl border border-white/[0.08] bg-ink-950/90 text-xs shadow-panel backdrop-blur">
       <button

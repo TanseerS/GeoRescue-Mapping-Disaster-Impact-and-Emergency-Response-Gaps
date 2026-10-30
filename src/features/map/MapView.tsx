@@ -91,7 +91,7 @@ export function MapView(props: MapViewProps) {
       style: style.url,
       bounds: INITIAL_BOUNDS,
       fitBoundsOptions: { padding: 24 },
-      minZoom: 0.6,
+      minZoom: 0,
       maxZoom: 17,
       dragRotate: false,
       pitchWithRotate: false,
@@ -103,24 +103,40 @@ export function MapView(props: MapViewProps) {
     map.addControl(new maplibregl.ScaleControl({ unit: "metric", maxWidth: 110 }), "bottom-right");
     map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
 
+    let fallbackPending = false;
     const switchToFallback = () => {
+      loaded = false;
       style = fallbackMapStyle();
       latest.current.onStyleChange(style);
       map.setStyle(style.url, { diff: false });
     };
 
     map.on("error", (event) => {
-      if (loaded) return; // tile-level errors after the style loaded are non-fatal
-      if (style.provider === "amazon-location") {
-        console.warn("Amazon Location style failed to load, using fallback basemap.", event.error?.message);
-        switchToFallback();
-      } else {
-        latest.current.onReadyChange("error");
+      if (event.error?.name === "AbortError") return; // cancelled requests during a style switch
+      const status = (event.error as { status?: number } | undefined)?.status;
+      const authFailure = status === 401 || status === 403;
+      if (style.provider === "amazon-location" && (!loaded || authFailure)) {
+        if (fallbackPending) return;
+        fallbackPending = true;
+        console.warn("Amazon Location basemap unavailable, switching to the open fallback basemap.", event.error?.message);
+        // A rejected API key still returns the style descriptor, so tile 401/403s also trigger the fallback.
+        // Switch once pending requests settle to avoid aborting them mid-flight.
+        if (loaded) map.once("idle", switchToFallback);
+        else switchToFallback();
+        return;
       }
+      if (!loaded) latest.current.onReadyChange("error");
+      // Individual tile errors after the style loaded are non-fatal.
     });
 
+    let firstLoad = true;
     map.on("style.load", () => {
       loaded = true;
+      if (firstLoad) {
+        // Some provider styles carry their own camera; keep the global framing on first load.
+        firstLoad = false;
+        map.fitBounds(INITIAL_BOUNDS, { padding: 24, duration: 0 });
+      }
       installLayers(map);
       const p = latest.current;
       setSourceData(map, SOURCES.earthquakes, earthquakesToGeoJSON(p.earthquakes));
