@@ -2,7 +2,33 @@
 
 This guide covers every step from an empty AWS account to a hosted frontend backed by the serverless pipeline. Run the commands from the repository root unless a step says otherwise.
 
-> **Status.** The infrastructure is validated with `sam validate --lint` (cfn-lint) and `sam build`, and its logic is covered by unit tests. It has **not** been deployed by the project author. Deploying creates billable resources in your account. See [Cost](#cost) below.
+> **Status.** GeoRescue is **deployed** at **https://main.d147btk08obxux.amplifyapp.com** (us-east-1, 30 October 2026). Details are under [Live deployment](#live-deployment). Deploying your own copy creates billable resources in your account; see [Cost](#cost).
+
+## Live deployment
+
+| Component | Value |
+| --- | --- |
+| Frontend | AWS Amplify Hosting app `georescue` (`d147btk08obxux`), branch `main`, manual deployments → https://main.d147btk08obxux.amplifyapp.com |
+| Backend | CloudFormation stack `georescue`, us-east-1 |
+| API | `https://6rc0hoc49j.execute-api.us-east-1.amazonaws.com` (`/health`, `/earthquakes`, `/earthquakes/metadata`, `/population`) |
+| Parameters | `AllowedOrigins` = the Amplify domain + `http://localhost:5173`; `CreateMapApiKey=true`; `EnableMapRouting=true`; `MapAllowedReferers` = the same two origins with `/*` |
+| Map key | `georescue-maps` (`geo-maps:GetTile` + `geo-routes:CalculateRoutes`, referrer-restricted) |
+
+**Verified on the live site:** the header shows *Data: AWS API* and *Amazon Location*, all tile requests return HTTP 200, population estimates are served through API Gateway and WorldPop, and a real Routes v2 driving route renders.
+
+**Updating the live frontend** (manual deployment, because the app isn't connected to GitHub):
+
+```bash
+KEY=$(aws location describe-key --key-name georescue-maps --region us-east-1 --query Key --output text)
+VITE_API_BASE_URL=https://6rc0hoc49j.execute-api.us-east-1.amazonaws.com VITE_AWS_REGION=us-east-1 \
+VITE_AWS_LOCATION_API_KEY="$KEY" VITE_AWS_LOCATION_ENABLE_ROUTING=true npm run build
+(cd dist && zip -qr ../georescue-dist.zip .)
+aws amplify create-deployment --app-id d147btk08obxux --branch-name main --region us-east-1   # returns jobId + zipUploadUrl
+curl -X PUT -H "Content-Type: application/zip" --upload-file georescue-dist.zip "<zipUploadUrl>"
+aws amplify start-deployment --app-id d147btk08obxux --branch-name main --job-id <jobId> --region us-east-1
+```
+
+To switch to automatic builds, connect the repository in the Amplify console (it uses `amplify.yml`) and add the same `VITE_*` environment variables.
 
 ## What gets deployed
 

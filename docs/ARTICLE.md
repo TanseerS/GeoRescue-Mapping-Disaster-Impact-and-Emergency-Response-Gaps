@@ -2,7 +2,7 @@
 
 *How I combined live earthquake data, OpenStreetMap infrastructure and WorldPop population estimates on a serverless AWS pipeline to surface potential emergency response gaps.*
 
-**Links:** [GitHub repository](https://github.com/TanseerS/GeoRescue-Mapping-Disaster-Impact-and-Emergency-Response-Gaps) · Live application: **[LIVE APP URL — add after deployment]** · Demo video: **[DEMO VIDEO URL — add after recording]**
+**Links:** [GitHub repository](https://github.com/TanseerS/GeoRescue-Mapping-Disaster-Impact-and-Emergency-Response-Gaps) · Live application: **[main.d147btk08obxux.amplifyapp.com](https://main.d147btk08obxux.amplifyapp.com)** · Demo video: **[DEMO VIDEO URL — add after recording]**
 
 [IMAGE 1: GeoRescue dashboard screenshot]
 
@@ -39,7 +39,7 @@ GeoRescue is a React and TypeScript single-page application backed by an AWS SAM
 - **Optionally calculate driving routes** with Amazon Location Service.
 - **Generate a deterministic intelligence brief** that can be copied into a report.
 
-Throughout this article I distinguish clearly between what I've **verified locally** and what is **deployable but not yet deployed**. The SAM stack passes `sam validate --lint` and `sam build`, its logic is covered by unit tests, and the whole pipeline runs locally against live data. I haven't deployed it to an AWS account as of writing.
+The SAM stack passes `sam validate --lint` and `sam build`, its logic is covered by unit tests, and it's **deployed in us-east-1**. It backs the live app at https://main.d147btk08obxux.amplifyapp.com, with the frontend on AWS Amplify Hosting. The same pipeline also runs locally against live data with one command.
 
 ## 4. Architecture overview
 
@@ -57,7 +57,7 @@ flowchart TB
         WP[("WorldPop<br/>population API")]
         OSM[("OpenStreetMap<br/>Overpass API")]
     end
-    subgraph STACK["AWS SAM stack · deployable"]
+    subgraph STACK["AWS SAM stack · deployed in us-east-1"]
         direction LR
         SCH["EventBridge Scheduler<br/>every 5 min"] -->|invoke| ING["Lambda · ingestion"]
         SCH -.->|undeliverable| DLQ[["SQS DLQ"]]
@@ -247,7 +247,7 @@ The Lambda builds a 48-vertex geodesic circle per radius, submits the tasks in p
 
 Straight-line distance is a proxy, and the UI never pretends otherwise. For a road-network comparison, GeoRescue can call the **Amazon Location Routes API v2** (`POST https://routes.geo.<region>.amazonaws.com/v2/routes?key=…`, `TravelMode: "Car"`, `LegGeometryFormat: "Simple"`) to draw a route from a facility to the epicenter, with road distance and estimated drive time.
 
-It's opt-in: the key needs `geo-routes:CalculateRoutes`, which the SAM template adds only when `EnableMapRouting=true`. Routing is unit-tested and browser-tested against the documented response format, but not yet against a live key.
+It's opt-in: the key needs `geo-routes:CalculateRoutes`, which the SAM template adds only when `EnableMapRouting=true`. On the live deployment, the nearest hospital to a California test event was 35 km away in a straight line, but **86.5 km and about 103 minutes by road**. That gap is exactly why straight-line distance is never labeled as travel distance.
 
 ## 13. Challenges and how I solved them
 
@@ -291,7 +291,7 @@ GeoRescue measures **geographic proximity, not response capability.** Facility c
 - **Make honesty a feature.** Source badges, rounding and "not a casualty estimate" labels build trust.
 - **Serverless fits read-mostly geospatial data.** S3 with conditional writes replaced a database.
 
-Next on my list: deploying the stack and Amplify Hosting; drive-time isochrones instead of circles; USGS ShakeMap intensity weighting; additional hazards such as GDACS floods and NASA FIRMS wildfires; and batch ranking of events by exposed population per kilometre to the nearest hospital.
+Next on my list: Git-connected Amplify builds; drive-time isochrones instead of circles; USGS ShakeMap intensity weighting; additional hazards such as GDACS floods and NASA FIRMS wildfires; and batch ranking of events by exposed population per kilometre to the nearest hospital.
 
 ## 17. Conclusion
 
@@ -307,7 +307,7 @@ GeoRescue doesn't just visualize disasters. It combines disaster locations, emer
 
 - **Source code:** https://github.com/TanseerS/GeoRescue-Mapping-Disaster-Impact-and-Emergency-Response-Gaps
 - **Deployment guide:** [docs/DEPLOYMENT.md](https://github.com/TanseerS/GeoRescue-Mapping-Disaster-Impact-and-Emergency-Response-Gaps/blob/main/docs/DEPLOYMENT.md)
-- **Live application:** [LIVE APP URL — add after deployment]
+- **Live application:** https://main.d147btk08obxux.amplifyapp.com
 - **Demo video:** [DEMO VIDEO URL — add after recording]
 
 *Data attribution: earthquake data courtesy of the U.S. Geological Survey. Facility data © OpenStreetMap contributors (ODbL). Population data © WorldPop (CC BY 4.0). Basemap © CARTO / OpenStreetMap contributors, or © AWS / HERE via Amazon Location Service.*

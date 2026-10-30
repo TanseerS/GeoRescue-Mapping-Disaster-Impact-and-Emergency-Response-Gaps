@@ -8,11 +8,13 @@
 
 React · TypeScript · MapLibre GL JS · Turf.js · AWS Lambda · Amazon S3 · API Gateway · EventBridge Scheduler · Amazon Location Service
 
-[Features](#key-features) · [Methodology](#response-gap-analysis-methodology) · [Architecture](#architecture) · [Run locally](#local-setup) · [Deploy](#aws-deployment) · [Submission](docs/HACKATHON-SUBMISSION.md) · [Technical article](docs/ARTICLE.md)
+**[🌐 Live app](https://main.d147btk08obxux.amplifyapp.com)** · [Features](#key-features) · [Methodology](#response-gap-analysis-methodology) · [Architecture](#architecture) · [Run locally](#local-setup) · [Deploy](#aws-deployment) · [Submission](docs/HACKATHON-SUBMISSION.md) · [Technical article](docs/ARTICLE.md)
 
 </div>
 
 ![GeoRescue global overview with clustered live USGS earthquakes](docs/screenshots/overview.png)
+
+> **Live:** [main.d147btk08obxux.amplifyapp.com](https://main.d147btk08obxux.amplifyapp.com). The frontend is on AWS Amplify Hosting, and the SAM stack runs in us-east-1: EventBridge Scheduler, Lambda, S3, API Gateway, CloudWatch and Amazon Location (maps and routes). Deployed 30 October 2026.
 
 ---
 
@@ -44,6 +46,8 @@ GeoRescue joins these three sources in one browser interface and computes, in se
 | ![Selected earthquake with intelligence brief and nearby facilities](docs/screenshots/earthquake-details.png) | ![Response gap analysis: coverage class, per-type counts and radius rings](docs/screenshots/gap-analysis.png) |
 | **Population exposure (WorldPop)** | **Magnitude-weighted heatmap** |
 | ![Population exposure estimates per radius](docs/screenshots/population-exposure.png) | ![Earthquake density heatmap](docs/screenshots/heatmap.png) |
+| **Real Amazon Location driving route (live deployment)** | **Facilities with OpenStreetMap details** |
+| ![86.5 km road route versus 35 km straight-line distance on the Amazon Location basemap](docs/screenshots/driving-route.png) | ![Facility details card](docs/screenshots/facilities.png) |
 
 <p align="center"><img src="docs/screenshots/mobile.png" alt="GeoRescue on a phone" width="260"></p>
 
@@ -115,7 +119,7 @@ flowchart TB
         OSM[("OpenStreetMap<br/>Overpass API")]
     end
 
-    subgraph STACK["AWS SAM stack · deployable"]
+    subgraph STACK["AWS SAM stack · deployed in us-east-1"]
         direction LR
         SCH["EventBridge Scheduler<br/>every 5 min"] -->|invoke| ING["Lambda · ingestion"]
         SCH -.->|undeliverable| DLQ[["SQS DLQ"]]
@@ -161,7 +165,7 @@ flowchart TB
     class APP client
 ```
 
-**How to read the diagram.** Orange-bordered nodes are created by the SAM stack in [`infrastructure/template.yaml`](infrastructure/template.yaml). Dashed nodes and edges are optional or configuration-dependent. Blue cylinders are external public services. The stack is validated and ready to deploy. It has **not** been deployed by the author; see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+**How to read the diagram.** Orange-bordered nodes are created by the SAM stack in [`infrastructure/template.yaml`](infrastructure/template.yaml). Dashed nodes and edges are optional or configuration-dependent. Blue cylinders are external public services. The stack is **deployed in us-east-1** and backs the [live app](https://main.d147btk08obxux.amplifyapp.com); see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) to deploy your own copy.
 
 **Data flow.** Every 5 minutes, ingestion fetches the USGS `all_day` feed with retries and validates it, preserving the original USGS properties and coordinates. It merges the feed into a rolling 30-day window (seeded from `all_month` on the first run), writes `latest.geojson` and an hourly history snapshot that is never overwritten, and records ingestion metadata. S3 conditional writes make duplicate or overlapping runs safe. The API serves the window with filtering and gzip, plus `/health`, `/earthquakes/metadata` and the WorldPop population routes. Without the API, the browser reads USGS directly and shows a **USGS direct** or **USGS fallback** badge.
 
@@ -284,8 +288,8 @@ At a 5-minute schedule with demo traffic, the pipeline is estimated at **well un
 - **OpenStreetMap completeness varies.** The absence of a mapped facility doesn't prove that none exists.
 - **Population figures are modelled 2020 estimates** of residents. They don't reflect current, daytime or displaced population, and they aren't impact estimates. There is no gridded population *map layer* (that would need raster tile hosting), so that toggle is disabled and labeled.
 - **Public services can be slow.** Overpass mirrors and WorldPop sometimes take 5–60 s. GeoRescue hedges, retries and caches, and shows a clear retry state when a service fails.
-- **Driving routes are optional and unverified against a live key here.** They require an Amazon Location key with routing permission; unit tests and a browser test against a mocked response cover the documented API format.
-- **Not deployed by the author.** The AWS stack is validated (`sam validate --lint`, `sam build`) but not deployed. Without it, the app runs in direct-USGS mode, and population exposure needs the local or deployed API.
+- **Driving routes are optional.** They need an Amazon Location key with routing permission. They're enabled and verified on the live deployment: for example, an 86.5 km, 103-minute road route to a hospital 35 km away in a straight line. Durations are typical-traffic estimates, not live response times.
+- **Frontend updates are manual.** The live Amplify app uses manual (zip) deployments. Connect the GitHub repository in the Amplify console for automatic builds (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#live-deployment)).
 - **Earthquakes only.** Other hazards (floods, cyclones, wildfires) are not modelled yet.
 
 ## Future possibilities

@@ -90,7 +90,7 @@ Every step below uses features that exist in the application today. Bracketed al
 
 > "GeoRescue: disaster locations, emergency infrastructure and population exposure, combined to reveal potential response gaps. The code, the architecture and the deployment guide are all on GitHub."
 
-*(Mention a live URL here only if you have actually deployed the application.)*
+*(Show and mention the live app: **main.d147btk08obxux.amplifyapp.com**.)*
 
 ---
 

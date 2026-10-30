@@ -54,18 +54,18 @@ GeoRescue is a browser-based disaster intelligence dashboard that answers that q
 
 ## F. How AWS is used
 
-GeoRescue has a complete, tested AWS SAM stack in `infrastructure/`. The table below separates **what is implemented in code** from **what needs an AWS deployment or optional configuration**. The stack passes `sam validate --lint` and `sam build`, and its logic is covered by unit tests. **It has not been deployed by the author.**
+GeoRescue has a complete, tested AWS SAM stack in `infrastructure/`, and it is **deployed in us-east-1**. It backs the live application at https://main.d147btk08obxux.amplifyapp.com, with the frontend on AWS Amplify Hosting. The stack passes `sam validate --lint` and `sam build`, and its logic is covered by unit tests.
 
 | AWS service | Role in GeoRescue | Status |
 | --- | --- | --- |
-| **Amazon EventBridge Scheduler** | Triggers ingestion every 5 minutes, with a retry policy | Defined in the SAM template; runs once deployed |
-| **AWS Lambda** (Node.js 24, arm64) | **Ingestion:** fetch USGS with retries, validate, normalize, merge a rolling 30-day window, write hourly history. **API:** serve earthquakes, metadata, health and WorldPop population estimates | Code and unit tests implemented; runs locally with `npm run local`; runs on AWS once deployed |
-| **Amazon S3** | Private GeoJSON storage (`latest`, 30-day window, hourly history, metadata), with conditional writes for concurrency safety | Defined in the template; Block Public Access, encryption and a TLS-only policy |
-| **Amazon API Gateway (HTTP API)** | Public endpoint with a CORS allow-list and global and per-route throttling | Defined in the template |
-| **Amazon CloudWatch** | Structured JSON logs, an ingestion error alarm, API access logs, 14-day retention | Defined in the template |
-| **Amazon SQS** | Dead-letter queue for undeliverable schedule events | Defined in the template |
-| **Amazon Location Service** | **Maps v2** basemap tiles via a referrer-restricted API key. **Routes v2** driving routes from a facility to the epicenter | Frontend integration implemented. Needs an API key (the stack can create one with `CreateMapApiKey=true`). Routing is opt-in (`EnableMapRouting=true`) and verified against a mocked response, not a live key. Without a key, an open basemap is used automatically |
-| **AWS Amplify Hosting** (optional) | Hosts the React frontend | `amplify.yml` provided; requires connecting the repository |
+| **Amazon EventBridge Scheduler** | Triggers ingestion every 5 minutes, with a retry policy | **Deployed** (us-east-1) |
+| **AWS Lambda** (Node.js 24, arm64) | **Ingestion:** fetch USGS with retries, validate, normalize, merge a rolling 30-day window, write hourly history. **API:** serve earthquakes, metadata, health and WorldPop population estimates | **Deployed**; also runs locally with `npm run local` |
+| **Amazon S3** | Private GeoJSON storage (`latest`, 30-day window, hourly history, metadata), with conditional writes for concurrency safety | **Deployed**; Block Public Access, encryption and a TLS-only policy |
+| **Amazon API Gateway (HTTP API)** | Public endpoint with a CORS allow-list and global and per-route throttling | **Deployed** |
+| **Amazon CloudWatch** | Structured JSON logs, an ingestion error alarm, API access logs, 14-day retention | **Deployed** |
+| **Amazon SQS** | Dead-letter queue for undeliverable schedule events | **Deployed** |
+| **Amazon Location Service** | **Maps v2** basemap tiles via a referrer-restricted API key. **Routes v2** driving routes from a facility to the epicenter | **Deployed and verified live**: a referrer-restricted key renders the basemap, and real Routes v2 driving routes work. Without a key, an open basemap is used automatically |
+| **AWS Amplify Hosting** | Hosts the React frontend | **Deployed** (manual zip deployments); `amplify.yml` is provided for Git-connected builds |
 
 **Design choices for judges:** serverless end to end with no always-on resources (no VPC, NAT Gateway or database). Least-privilege IAM scoped to S3 prefixes and each function's own log group. An estimated cost of well under $1 per month at demo traffic.
 
@@ -92,7 +92,7 @@ GeoRescue has a complete, tested AWS SAM stack in `infrastructure/`. The table b
 - **Proximity is not response capability.** GeoRescue measures straight-line distance to *mapped* facilities. Facility availability, capacity, staffing, damage, road conditions and real response times are unknown, and the interface says so wherever results appear.
 - **OpenStreetMap coverage is uneven.** A missing facility may be unmapped, not absent.
 - **Population figures are modelled 2020 residential estimates.** They don't describe current, daytime or displaced populations, and they are **not casualty or impact estimates**.
-- **Driving routes** (optional) are Amazon Location estimates for typical traffic, not live emergency travel times.
+- **Driving routes** are Amazon Location estimates for typical traffic, not live emergency travel times.
 - **Public services can be slow or unavailable** (Overpass, WorldPop). GeoRescue shows a clear retry state rather than partial or invented data.
 - GeoRescue is a **decision-support visualization**, not an alerting, dispatch or life-safety system.
 
@@ -102,9 +102,9 @@ https://github.com/TanseerS/GeoRescue-Mapping-Disaster-Impact-and-Emergency-Resp
 
 ## K. Live application
 
-**[Live application URL: to be added after deployment]**
+**https://main.d147btk08obxux.amplifyapp.com**
 
-*(The AWS stack is deployment-ready but has not been deployed. Run locally with `npm install && npm run dev`, or follow [DEPLOYMENT.md](DEPLOYMENT.md).)*
+*(Frontend on AWS Amplify Hosting; backend SAM stack in us-east-1. Run locally with `npm install && npm run dev`, or deploy your own copy with [DEPLOYMENT.md](DEPLOYMENT.md).)*
 
 ## L. Demo video
 

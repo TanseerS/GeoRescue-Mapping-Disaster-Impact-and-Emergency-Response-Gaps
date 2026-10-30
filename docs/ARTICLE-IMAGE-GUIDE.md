@@ -18,7 +18,7 @@ Ready-to-use files for every image already exist in [`docs/screenshots/`](screen
 | 8 | `[IMAGE 8: GeoRescue data pipeline status in the application]` | Section 14, *Security, reliability and cost*, before **Reliability** | `screenshots/pipeline-status.png` | ☐ inserted |
 | 9 | `[IMAGE 9: GeoRescue GitHub repository]` | Section 18, *GitHub repository and project links* | `screenshots/github-repository.png` | ☐ re-capture recommended (see below) |
 
-Before publishing, also replace `[LIVE APP URL — add after deployment]` (two occurrences) and `[DEMO VIDEO URL — add after recording]` (two occurrences) in ARTICLE.md. If the app isn't deployed, remove the live-URL lines instead of leaving placeholders.
+The live application URL (https://main.d147btk08obxux.amplifyapp.com) is already in ARTICLE.md. Before publishing, replace `[DEMO VIDEO URL — add after recording]` (two occurrences) with your hosted video link. You can also capture the images from the live site instead of a local run. It uses the Amazon Location basemap (credit "© AWS, © HERE"), and a real driving route capture is available at `screenshots/driving-route.png`.
 
 ---
 
