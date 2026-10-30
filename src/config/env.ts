@@ -18,6 +18,8 @@ export const env = {
     apiKey: trim(import.meta.env.VITE_AWS_LOCATION_API_KEY),
     mapStyle: trim(import.meta.env.VITE_AWS_LOCATION_MAP_STYLE) || "Monochrome",
     colorScheme: trim(import.meta.env.VITE_AWS_LOCATION_COLOR_SCHEME) || "Dark",
+    /** Opt-in: the API key must also allow geo-routes:CalculateRoutes. */
+    routingEnabled: trim(import.meta.env.VITE_AWS_LOCATION_ENABLE_ROUTING).toLowerCase() === "true",
   },
   fallbackStyleUrl: trim(import.meta.env.VITE_FALLBACK_MAP_STYLE_URL) || DEFAULT_FALLBACK_STYLE,
   usgsBaseUrl: (trim(import.meta.env.VITE_USGS_FEED_BASE_URL) || DEFAULT_USGS_BASE).replace(/\/$/, ""),
@@ -32,3 +34,5 @@ export const env = {
 export const isAwsMapConfigured = (): boolean => env.aws.apiKey.length > 0;
 
 export const isAwsApiConfigured = (): boolean => env.apiBaseUrl.length > 0;
+
+export const isRoutingConfigured = (): boolean => isAwsMapConfigured() && env.aws.routingEnabled;

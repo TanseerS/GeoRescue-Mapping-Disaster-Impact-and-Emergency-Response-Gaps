@@ -1,12 +1,12 @@
 import { AlertTriangle, Crosshair, Globe2, RefreshCw, SearchX } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Button } from "../../components/ui/Button";
 import { Spinner } from "../../components/ui/Spinner";
 import type { ResolvedMapStyle } from "../../services/mapStyle";
 import type { GapAnalysis } from "../../types/analysis";
 import type { Earthquake } from "../../types/earthquake";
 import type { Facility } from "../../types/facility";
-import type { LayerVisibility } from "../../types/ui";
+import type { EarthquakeColorMode, LayerVisibility, MapDisplayMode, MapSettings } from "../../types/ui";
 import { formatNumber } from "../../utils/format";
 import { MapLegend } from "./MapLegend";
 import { MapView, type FocusRequest, type MapViewport } from "./MapView";
@@ -18,6 +18,14 @@ interface MapPanelProps {
   facilities: Facility[];
   analysis: GapAnalysis | null;
   layers: LayerVisibility;
+  settings: MapSettings;
+  onSettingsChange: (settings: MapSettings) => void;
+  radii: readonly number[];
+  selectedFacility: Facility | null;
+  route: [number, number][] | null;
+  /** Floating card (e.g. selected facility details) shown in the map's lower-right corner. */
+  overlay?: ReactNode;
+  onSelectFacility: (id: string | null) => void;
   focus: FocusRequest | null;
   dataStatus: "loading" | "refreshing" | "ready" | "error";
   dataError: string | null;
@@ -49,6 +57,11 @@ export function MapPanel(props: MapPanelProps) {
         facilities={props.facilities}
         analysis={props.analysis}
         layers={props.layers}
+        settings={props.settings}
+        radii={props.radii}
+        selectedFacility={props.selectedFacility}
+        route={props.route}
+        onSelectFacility={props.onSelectFacility}
         focus={props.focus}
         resetSignal={resetSignal}
         onSelect={props.onSelect}
@@ -57,8 +70,9 @@ export function MapPanel(props: MapPanelProps) {
         onReadyChange={setMapState}
       />
 
-      {/* Top-left status chips */}
-      <div className="pointer-events-none absolute left-3 top-3 z-10 flex flex-wrap items-center gap-2">
+      {/* Top-left status chips and display controls */}
+      <div className="pointer-events-none absolute left-3 right-14 top-3 z-10 flex flex-wrap items-center gap-2">
+        <DisplayControls settings={props.settings} onChange={props.onSettingsChange} />
         <span className="pointer-events-auto inline-flex items-center gap-2 rounded-lg border border-white/[0.08] bg-ink-950/85 px-2.5 py-1.5 text-xs text-ink-200 shadow-panel backdrop-blur">
           <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
           <span className="num font-medium text-white">{formatNumber(earthquakes.length)}</span>
@@ -105,8 +119,10 @@ export function MapPanel(props: MapPanelProps) {
       </div>
 
       <div className="pointer-events-none absolute bottom-3 left-3 z-10 hidden sm:block">
-        <MapLegend showRings={Boolean(selected)} />
+        <MapLegend settings={props.settings} radii={props.radii} showRings={Boolean(selected)} layers={props.layers} />
       </div>
+
+      {props.overlay && <div className="pointer-events-none absolute bottom-12 right-3 z-20 flex justify-end">{props.overlay}</div>}
 
       {(noData || mapState === "loading") && !hasError && mapState !== "error" && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-ink-950/50 backdrop-blur-[2px] animate-fade-in">
@@ -173,5 +189,59 @@ function OverlayCard(props: { icon: React.ReactNode; title: string; description:
         <div className="mt-4 flex justify-center">{props.action}</div>
       </div>
     </div>
+  );
+}
+
+const MODES: { id: MapDisplayMode; label: string; title: string }[] = [
+  { id: "markers", label: "Markers", title: "Every event as an individual marker" },
+  { id: "clusters", label: "Clusters", title: "Group nearby events at low zoom" },
+  { id: "heatmap", label: "Heatmap", title: "Magnitude-weighted event density" },
+];
+
+const COLOR_MODES: { id: EarthquakeColorMode; label: string; title: string }[] = [
+  { id: "severity", label: "Magnitude", title: "Color events by magnitude severity" },
+  { id: "depth", label: "Depth", title: "Color events by focal depth class" },
+];
+
+function Segmented<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: { id: T; label: string; title: string }[];
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div className="pointer-events-auto flex rounded-lg border border-white/[0.08] bg-ink-950/85 p-0.5 shadow-panel backdrop-blur" role="radiogroup" aria-label={label}>
+      {options.map((opt) => (
+        <button
+          key={opt.id}
+          type="button"
+          role="radio"
+          aria-checked={value === opt.id}
+          title={opt.title}
+          onClick={() => onChange(opt.id)}
+          className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
+            value === opt.id ? "bg-sky-400/15 text-sky-100" : "text-ink-400 hover:text-ink-100"
+          }`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function DisplayControls({ settings, onChange }: { settings: MapSettings; onChange: (s: MapSettings) => void }) {
+  return (
+    <>
+      <Segmented label="Earthquake display mode" options={MODES} value={settings.displayMode} onChange={(displayMode) => onChange({ ...settings, displayMode })} />
+      {settings.displayMode !== "heatmap" && (
+        <Segmented label="Color earthquakes by" options={COLOR_MODES} value={settings.colorBy} onChange={(colorBy) => onChange({ ...settings, colorBy })} />
+      )}
+    </>
   );
 }

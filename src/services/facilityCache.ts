@@ -1,6 +1,6 @@
 import type { Facility } from "../types/facility";
 
-const STORAGE_KEY = "georescue:facilities:v1";
+const STORAGE_KEY = "georescue:facilities:v2";
 const TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_ENTRIES = 40;
 

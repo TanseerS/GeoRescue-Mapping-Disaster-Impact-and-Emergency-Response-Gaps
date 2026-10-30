@@ -1,4 +1,5 @@
-import { SEVERITIES, SIGNIFICANT_MAGNITUDE } from "../config/constants";
+import { DEPTH_CLASSES, FACILITY_KINDS, SEVERITIES, SIGNIFICANT_MAGNITUDE } from "../config/constants";
+import type { Facility, FacilityKind } from "../types/facility";
 import type { Earthquake, EarthquakeFilters, SeverityLevel, TimeRange } from "../types/earthquake";
 
 export interface EarthquakeStats {
@@ -119,13 +120,18 @@ const REGION_NAMES: Record<string, string> = {
   PR: "Puerto Rico",
 };
 
+/** Region part of a USGS place string ("10 km SSW of X, Region"), with US state abbreviations expanded. */
+export function regionOf(place: string): string {
+  const parts = place.split(",");
+  const raw = (parts.length > 1 ? parts[parts.length - 1] : place.replace(/^.*\bof\s+/i, "")).trim() || "Unknown";
+  return REGION_NAMES[raw] ?? raw;
+}
+
 /** Groups events by the region part of the USGS place string ("10 km SSW of X, Region"). */
 export function topRegions(earthquakes: Earthquake[], limit = 5): { region: string; count: number; maxMag: number }[] {
   const map = new Map<string, { count: number; maxMag: number }>();
   for (const q of earthquakes) {
-    const parts = q.place.split(",");
-    const raw = (parts.length > 1 ? parts[parts.length - 1] : q.place.replace(/^.*\bof\s+/i, "")).trim() || "Unknown";
-    const region = REGION_NAMES[raw] ?? raw;
+    const region = regionOf(q.place);
     const entry = map.get(region) ?? { count: 0, maxMag: -Infinity };
     entry.count += 1;
     entry.maxMag = Math.max(entry.maxMag, q.magnitude);
@@ -135,4 +141,68 @@ export function topRegions(earthquakes: Earthquake[], limit = 5): { region: stri
     .map(([region, v]) => ({ region, ...v }))
     .sort((a, b) => b.count - a.count)
     .slice(0, limit);
+}
+
+export type DepthClass = (typeof DEPTH_CLASSES)[number];
+
+export function depthClass(depthKm: number): DepthClass {
+  return DEPTH_CLASSES.find((c) => depthKm < c.max) ?? DEPTH_CLASSES[DEPTH_CLASSES.length - 1];
+}
+
+/** Focal depth bins (km), each tagged with its seismological depth class. */
+const DEPTH_BINS = [0, 10, 30, 70, 150, 300, 700];
+
+export interface DepthBin {
+  label: string;
+  count: number;
+  depthClass: DepthClass["id"];
+}
+
+export function depthHistogram(earthquakes: Earthquake[]): DepthBin[] {
+  const bins: DepthBin[] = DEPTH_BINS.slice(0, -1).map((from, i) => ({
+    label: i === DEPTH_BINS.length - 2 ? `${from}+` : `${from}–${DEPTH_BINS[i + 1]}`,
+    count: 0,
+    depthClass: depthClass(from).id,
+  }));
+  for (const q of earthquakes) {
+    const depth = Math.max(0, q.depthKm);
+    let idx = DEPTH_BINS.findIndex((edge, i) => i > 0 && depth < edge) - 1;
+    if (idx < 0) idx = bins.length - 1;
+    bins[idx].count += 1;
+  }
+  return bins;
+}
+
+export interface CategoryCount {
+  id: SeverityLevel;
+  label: string;
+  range: string;
+  color: string;
+  count: number;
+}
+
+/** Event counts per magnitude category (severity band), least to most severe. */
+export function magnitudeCategories(earthquakes: Earthquake[]): CategoryCount[] {
+  const counts = new Map<SeverityLevel, number>(SEVERITIES.map((s) => [s.id, 0]));
+  for (const q of earthquakes) counts.set(q.severity, (counts.get(q.severity) ?? 0) + 1);
+  return SEVERITIES.map((s) => ({ id: s.id, label: s.label, range: s.range, color: s.color, count: counts.get(s.id) ?? 0 }));
+}
+
+/** Mapped facilities by type, across every OpenStreetMap result loaded in this session. */
+export function facilityDistribution(facilities: Facility[]): { kind: FacilityKind; label: string; count: number }[] {
+  const counts = new Map<FacilityKind, number>();
+  for (const f of facilities) counts.set(f.kind, (counts.get(f.kind) ?? 0) + 1);
+  return FACILITY_KINDS.map((k) => ({ kind: k.id, label: k.plural, count: counts.get(k.id) ?? 0 }));
+}
+
+/** Bounding box of a region's events, for zooming the map to that region. */
+export function regionBounds(earthquakes: Earthquake[], region: string): [[number, number], [number, number]] | null {
+  const events = earthquakes.filter((q) => regionOf(q.place) === region);
+  if (events.length === 0) return null;
+  const lons = events.map((q) => q.longitude);
+  const lats = events.map((q) => q.latitude);
+  return [
+    [Math.min(...lons), Math.min(...lats)],
+    [Math.max(...lons), Math.max(...lats)],
+  ];
 }

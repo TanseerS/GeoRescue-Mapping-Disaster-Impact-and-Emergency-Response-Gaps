@@ -1,19 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { Earthquake } from "../types/earthquake";
 import { getSeverity } from "./severity";
-import { computeStats, eventTimeline, filterEarthquakes, magnitudeHistogram } from "./stats";
+import { computeStats, depthClass, depthHistogram, eventTimeline, facilityDistribution, filterEarthquakes, magnitudeCategories, magnitudeHistogram, regionBounds, regionOf } from "./stats";
 
-function quake(id: string, magnitude: number, time = 0): Earthquake {
+function quake(id: string, magnitude: number, time = 0, depthKm = 10, place = "Somewhere, Region", lon = 0, lat = 0): Earthquake {
   return {
     id,
     magnitude,
     magnitudeType: "ml",
-    place: "Somewhere, Region",
+    place,
     time,
     updated: time,
-    longitude: 0,
-    latitude: 0,
-    depthKm: 10,
+    longitude: lon,
+    latitude: lat,
+    depthKm,
     url: null,
     tsunami: false,
     alert: null,
@@ -64,5 +64,38 @@ describe("stats", () => {
     const buckets = eventTimeline([quake("x", 3, now - 1000), quake("y", 3, now - 5 * 3_600_000)], "day", now);
     expect(buckets).toHaveLength(24);
     expect(buckets.reduce((s, b) => s + b.count, 0)).toBe(2);
+  });
+});
+
+describe("depth and category analytics", () => {
+  it("classifies focal depth", () => {
+    expect(depthClass(5).id).toBe("shallow");
+    expect(depthClass(70).id).toBe("intermediate");
+    expect(depthClass(450).id).toBe("deep");
+  });
+
+  it("bins events by depth", () => {
+    const bins = depthHistogram([quake("a", 2, 0, 3), quake("b", 2, 0, 45), quake("c", 2, 0, 600), quake("d", 2, 0, 800), quake("e", 2, 0, -1)]);
+    expect(bins.map((b) => b.count)).toEqual([2, 0, 1, 0, 0, 2]);
+    expect(bins[5]).toMatchObject({ label: "300+", depthClass: "deep" });
+  });
+
+  it("counts events per magnitude category", () => {
+    const cats = magnitudeCategories([quake("a", 1), quake("b", 3), quake("c", 3.1), quake("d", 6.5)]);
+    expect(cats.map((c) => [c.id, c.count])).toEqual([["minor", 1], ["light", 2], ["moderate", 0], ["strong", 1]]);
+  });
+
+  it("finds region bounds and expands US state abbreviations", () => {
+    expect(regionOf("10 km NW of Ridgecrest, CA")).toBe("California");
+    const events = [quake("a", 2, 0, 5, "5 km N of A, Alaska", -150, 60), quake("b", 2, 0, 5, "9 km S of B, Alaska", -140, 62), quake("c", 2, 0, 5, "X, Chile", -70, -30)];
+    expect(regionBounds(events, "Alaska")).toEqual([[-150, 60], [-140, 62]]);
+    expect(regionBounds(events, "Nowhere")).toBeNull();
+  });
+
+  it("counts mapped facilities by type", () => {
+    const f = (kind: "hospital" | "clinic" | "police") => ({ id: kind + Math.random(), kind } as Parameters<typeof facilityDistribution>[0][number]);
+    const dist = facilityDistribution([f("hospital"), f("clinic"), f("clinic"), f("police")]);
+    expect(dist.find((d) => d.kind === "clinic")?.count).toBe(2);
+    expect(dist.find((d) => d.kind === "fire_station")?.count).toBe(0);
   });
 });

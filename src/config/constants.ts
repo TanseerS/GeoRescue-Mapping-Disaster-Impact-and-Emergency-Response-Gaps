@@ -1,4 +1,5 @@
 import type { EarthquakeFilters, SeverityLevel, TimeRange } from "../types/earthquake";
+import type { FacilityKind } from "../types/facility";
 
 export const FEEDS: Record<TimeRange, { file: string; label: string; short: string }> = {
   day: { file: "all_day.geojson", label: "Past 24 hours", short: "24h" },
@@ -46,8 +47,18 @@ export const DEFAULT_FILTERS: EarthquakeFilters = {
   severities: SEVERITIES.map((s) => s.id),
 };
 
+/** Default analysis radii (km). Users can choose other presets or custom values up to the search radius. */
 export const ANALYSIS_RADII_KM = [10, 25, 50] as const;
+/** Overpass search radius around an epicenter; analysis radii can never exceed it. */
 export const FACILITY_SEARCH_RADIUS_KM = 50;
+
+export type AnalysisRadii = [number, number, number];
+
+export const RADIUS_PRESETS: { id: string; label: string; radii: AnalysisRadii; description: string }[] = [
+  { id: "urban", label: "Urban", radii: [5, 10, 20], description: "Dense cities with short distances between facilities" },
+  { id: "standard", label: "Standard", radii: [10, 25, 50], description: "General-purpose default" },
+  { id: "rural", label: "Rural", radii: [20, 35, 50], description: "Sparse regions with longer distances" },
+];
 
 /** Auto-refresh interval for the live USGS feed. USGS regenerates summary feeds every minute. */
 export const AUTO_REFRESH_MS = 5 * 60 * 1000;
@@ -58,7 +69,44 @@ export const INITIAL_BOUNDS: [[number, number], [number, number]] = [
   [178, 68],
 ];
 
+/** Group colors: health facilities (hospitals, clinics) and emergency services. Icons add a per-type glyph. */
 export const FACILITY_COLORS = {
   hospital: "#38bdf8",
   emergency: "#8b5cf6",
 };
+
+export interface FacilityKindDefinition {
+  id: FacilityKind;
+  label: string;
+  plural: string;
+  group: "health" | "emergency";
+  color: string;
+}
+
+export const FACILITY_KINDS: FacilityKindDefinition[] = [
+  { id: "hospital", label: "Hospital", plural: "Hospitals", group: "health", color: FACILITY_COLORS.hospital },
+  { id: "clinic", label: "Clinic", plural: "Clinics", group: "health", color: FACILITY_COLORS.hospital },
+  { id: "fire_station", label: "Fire station", plural: "Fire stations", group: "emergency", color: FACILITY_COLORS.emergency },
+  { id: "ambulance_station", label: "Ambulance station", plural: "Ambulance stations", group: "emergency", color: FACILITY_COLORS.emergency },
+  { id: "police", label: "Police station", plural: "Police stations", group: "emergency", color: FACILITY_COLORS.emergency },
+];
+
+export const FACILITY_KIND_BY_ID = Object.fromEntries(FACILITY_KINDS.map((k) => [k.id, k])) as Record<
+  FacilityKind,
+  FacilityKindDefinition
+>;
+
+/** Coverage class colors reuse the ordered severity scale (green → red). */
+export const COVERAGE_COLORS = {
+  good: "#22c55e",
+  moderate: "#facc15",
+  limited: "#f97316",
+  critical: "#e11d48",
+} as const;
+
+/** Earthquake depth classes used in seismology (focal depth). */
+export const DEPTH_CLASSES = [
+  { id: "shallow", label: "Shallow", range: "0–70 km", max: 70, color: "#ccfbf1" },
+  { id: "intermediate", label: "Intermediate", range: "70–300 km", max: 300, color: "#2dd4bf" },
+  { id: "deep", label: "Deep", range: "> 300 km", max: Infinity, color: "#0f766e" },
+] as const;

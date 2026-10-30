@@ -1,6 +1,8 @@
 import { env } from "../config/env";
 import type {
   Facility,
+  FacilityCategory,
+  FacilityDetails,
   FacilityKind,
   FacilityQuery,
   OverpassElement,
@@ -26,23 +28,27 @@ export function buildOverpassQuery(query: FacilityQuery): string {
   const area = areaFilter(query);
   return `[out:json][timeout:50];
 (
-  nwr["amenity"~"^(hospital|fire_station|police)$"]${area};
-  nwr["healthcare"="hospital"]${area};
+  nwr["amenity"~"^(hospital|clinic|fire_station|police)$"]${area};
+  nwr["healthcare"~"^(hospital|clinic)$"]${area};
   nwr["emergency"="ambulance_station"]${area};
 );
 out center tags;`;
 }
 
+/** Bump when the query's facility types change so cached results are not reused. */
+const QUERY_VERSION = "v2";
+
 export function facilityQueryKey(query: FacilityQuery): string {
   if (query.type === "radius") {
-    return `r:${query.latitude.toFixed(4)},${query.longitude.toFixed(4)},${query.radiusKm}`;
+    return `${QUERY_VERSION}:r:${query.latitude.toFixed(4)},${query.longitude.toFixed(4)},${query.radiusKm}`;
   }
   const b = query.bbox;
-  return `b:${b.south.toFixed(3)},${b.west.toFixed(3)},${b.north.toFixed(3)},${b.east.toFixed(3)}`;
+  return `${QUERY_VERSION}:b:${b.south.toFixed(3)},${b.west.toFixed(3)},${b.north.toFixed(3)},${b.east.toFixed(3)}`;
 }
 
 function classify(tags: Record<string, string>): FacilityKind | null {
   if (tags.amenity === "hospital" || tags.healthcare === "hospital") return "hospital";
+  if (tags.amenity === "clinic" || tags.healthcare === "clinic") return "clinic";
   if (tags.amenity === "fire_station") return "fire_station";
   if (tags.emergency === "ambulance_station") return "ambulance_station";
   if (tags.amenity === "police") return "police";
@@ -51,10 +57,37 @@ function classify(tags: Record<string, string>): FacilityKind | null {
 
 const KIND_FALLBACK_NAME: Record<FacilityKind, string> = {
   hospital: "Unnamed hospital",
+  clinic: "Unnamed clinic",
   fire_station: "Unnamed fire station",
   police: "Unnamed police station",
   ambulance_station: "Unnamed ambulance station",
 };
+
+function categoryOf(kind: FacilityKind): FacilityCategory {
+  if (kind === "hospital" || kind === "clinic") return kind;
+  return "emergency";
+}
+
+function address(tags: Record<string, string>): string | undefined {
+  if (tags["addr:full"]) return tags["addr:full"];
+  const street = [tags["addr:housenumber"], tags["addr:street"]].filter(Boolean).join(" ");
+  const parts = [street, tags["addr:city"], tags["addr:postcode"]].filter(Boolean);
+  return parts.length ? parts.join(", ") : undefined;
+}
+
+/** Copies only tags that are present; absent information stays absent. */
+function details(tags: Record<string, string>): FacilityDetails {
+  const entries: [keyof FacilityDetails, string | undefined][] = [
+    ["operator", tags.operator],
+    ["phone", tags.phone ?? tags["contact:phone"]],
+    ["website", tags.website ?? tags["contact:website"]],
+    ["address", address(tags)],
+    ["beds", tags.beds],
+    ["openingHours", tags.opening_hours],
+    ["speciality", tags["healthcare:speciality"]],
+  ];
+  return Object.fromEntries(entries.filter(([, v]) => v && v.trim())) as FacilityDetails;
+}
 
 export function parseOverpassElements(elements: OverpassElement[]): Facility[] {
   const seen = new Set<string>();
@@ -73,11 +106,12 @@ export function parseOverpassElements(elements: OverpassElement[]): Facility[] {
       id,
       name: tags.name || tags["name:en"] || tags.operator || KIND_FALLBACK_NAME[kind],
       kind,
-      category: kind === "hospital" ? "hospital" : "emergency",
+      category: categoryOf(kind),
       latitude: lat,
       longitude: lon,
-      hasEmergencyDept: kind === "hospital" && emergencyTag ? emergencyTag === "yes" : null,
+      hasEmergencyDept: (kind === "hospital" || kind === "clinic") && emergencyTag ? emergencyTag === "yes" : null,
       osmUrl: `https://www.openstreetmap.org/${id}`,
+      details: details(tags),
     });
   }
   return facilities;

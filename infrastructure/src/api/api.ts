@@ -4,6 +4,7 @@ import type { IngestionMetadata } from "../ingest/ingest";
 import { KEYS } from "../shared/keys";
 import type { Logger } from "../shared/logger";
 import type { ObjectStore } from "../shared/storage";
+import { circlePolygon, WORLDPOP_DATASET, type PopulationProvider } from "./population";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RANGES = { day: DAY_MS, week: 7 * DAY_MS, month: 30 * DAY_MS } as const;
@@ -38,7 +39,13 @@ export interface ApiDeps {
   store: ObjectStore;
   logger: Logger;
   now?: () => number;
+  /** Optional: enables GET /population. */
+  population?: PopulationProvider;
 }
+
+const POPULATION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const POPULATION_CACHE_MAX = 500;
+const MAX_POPULATION_RADIUS_KM = 50;
 
 class HttpError extends Error {
   constructor(
@@ -170,6 +177,39 @@ export function createApi(config: ApiConfig, deps: ApiDeps) {
     };
   }
 
+  const populationCache = new Map<string, { value: number; at: number }>();
+
+  async function populationFor(lat: number, lon: number, radiusKm: number): Promise<number> {
+    const key = `${lat.toFixed(3)},${lon.toFixed(3)},${radiusKm}`;
+    const hit = populationCache.get(key);
+    if (hit && now() - hit.at < POPULATION_CACHE_TTL_MS) return hit.value;
+    const value = await deps.population!.totalPopulation(circlePolygon(lat, lon, radiusKm));
+    if (populationCache.size >= POPULATION_CACHE_MAX) populationCache.delete(populationCache.keys().next().value as string);
+    populationCache.set(key, { value, at: now() });
+    return value;
+  }
+
+  async function population(query: ApiRequest["query"]): Promise<unknown> {
+    if (!deps.population) throw new HttpError(404, "Population estimates are not enabled.");
+    const lat = Number(query.lat);
+    const lon = Number(query.lon);
+    if (query.lat === undefined || !Number.isFinite(lat) || Math.abs(lat) > 90) throw new HttpError(400, "lat must be a latitude between -90 and 90.");
+    if (query.lon === undefined || !Number.isFinite(lon) || Math.abs(lon) > 180) throw new HttpError(400, "lon must be a longitude between -180 and 180.");
+    const radii = (query.radii ?? "10,25,50").split(",").map((r) => Number(r.trim()));
+    const valid =
+      radii.length >= 1 &&
+      radii.length <= 3 &&
+      radii.every((r, i) => Number.isFinite(r) && r >= 1 && r <= MAX_POPULATION_RADIUS_KM && (i === 0 || r > radii[i - 1]));
+    if (!valid) throw new HttpError(400, `radii must be 1–3 increasing values between 1 and ${MAX_POPULATION_RADIUS_KM} km.`);
+    try {
+      const totals = await Promise.all(radii.map((r) => populationFor(lat, lon, r)));
+      return { ...WORLDPOP_DATASET, results: radii.map((radiusKm, i) => ({ radiusKm, population: Math.round(totals[i]) })) };
+    } catch (err) {
+      deps.logger.warn("population.upstream.failed", { error: err });
+      throw new HttpError(502, "The WorldPop population service is unavailable. Retry shortly.");
+    }
+  }
+
   function respond(status: number, body: unknown, req: ApiRequest, cacheControl: string, extra: Record<string, string> = {}): ApiResponse {
     const json = JSON.stringify(body);
     const headers: Record<string, string> = {
@@ -208,6 +248,9 @@ export function createApi(config: ApiConfig, deps: ApiDeps) {
           break;
         case "/earthquakes":
           response = respond(200, await earthquakes(req.query), req, "public, max-age=60");
+          break;
+        case "/population":
+          response = respond(200, await population(req.query), req, "public, max-age=86400");
           break;
         default:
           throw new HttpError(404, "Not found.");

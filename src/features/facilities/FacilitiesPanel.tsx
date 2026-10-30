@@ -1,11 +1,11 @@
-import { Building2, Crosshair, Info, ScanSearch } from "lucide-react";
+import { Building2, Crosshair, Info, Layers, ScanSearch } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { PanelHeader } from "../../components/ui/PanelHeader";
-import { FACILITY_COLORS, FACILITY_SEARCH_RADIUS_KM } from "../../config/constants";
+import { FACILITY_KIND_BY_ID, FACILITY_KINDS, FACILITY_SEARCH_RADIUS_KM } from "../../config/constants";
 import type { Earthquake } from "../../types/earthquake";
-import type { BoundingBox, FacilityCategory, FacilityKind, FacilityResult, FacilityWithDistance } from "../../types/facility";
+import type { BoundingBox, FacilityKind, FacilityResult, FacilityWithDistance } from "../../types/facility";
 import { formatNumber } from "../../utils/format";
 import { withDistances } from "../../utils/geo";
 import { FACILITY_KIND_META, FacilityList } from "./FacilityList";
@@ -28,15 +28,16 @@ interface FacilitiesPanelProps {
   onRetryArea: () => void;
   onRetrySelected: () => void;
   onFocus: (facility: FacilityWithDistance) => void;
+  selectedFacilityId: string | null;
 }
 
 type Source = "event" | "area";
-type CategoryFilter = "all" | FacilityCategory;
+type KindFilter = "all" | FacilityKind;
 
 export function FacilitiesPanel(props: FacilitiesPanelProps) {
   const { selected, selectedResult, viewport, areaResult, areaCenter } = props;
   const [source, setSource] = useState<Source>(selected ? "event" : "area");
-  const [category, setCategory] = useState<CategoryFilter>("all");
+  const [filter, setFilter] = useState<KindFilter>("all");
 
   useEffect(() => {
     if (selected) setSource("event");
@@ -52,12 +53,12 @@ export function FacilitiesPanel(props: FacilitiesPanelProps) {
   }, [result, origin, source]);
 
   const byKind = useMemo(() => {
-    const counts: Record<FacilityKind, number> = { hospital: 0, fire_station: 0, police: 0, ambulance_station: 0 };
+    const counts: Record<FacilityKind, number> = { hospital: 0, clinic: 0, fire_station: 0, ambulance_station: 0, police: 0 };
     facilities.forEach((f) => (counts[f.kind] += 1));
     return counts;
   }, [facilities]);
 
-  const visible = category === "all" ? facilities : facilities.filter((f) => f.category === category);
+  const visible = filter === "all" ? facilities : facilities.filter((f) => f.kind === filter);
   const canScan = viewport ? bboxArea(viewport.bbox) <= MAX_SCAN_AREA_SQ_DEG : false;
 
   return (
@@ -114,7 +115,7 @@ export function FacilitiesPanel(props: FacilitiesPanelProps) {
           <EmptyState
             icon={<Crosshair className="h-5 w-5" />}
             title="No earthquake selected"
-            description={`Select an earthquake on the map to load hospitals and emergency facilities within ${FACILITY_SEARCH_RADIUS_KM} km.`}
+            description={`Select an earthquake on the map to load hospitals, clinics and emergency services within ${FACILITY_SEARCH_RADIUS_KM} km.`}
           />
         ) : source === "area" && !areaResult ? (
           <EmptyState
@@ -128,56 +129,53 @@ export function FacilitiesPanel(props: FacilitiesPanelProps) {
           </div>
         ) : (
           <div className="animate-fade-in">
-            <div className="grid grid-cols-2 gap-2 px-4 pt-3">
-              {(Object.keys(byKind) as FacilityKind[]).map((kind) => (
-                <div key={kind} className="panel-muted flex items-center gap-2 px-2.5 py-2">
-                  <span
-                    className="flex h-6 w-6 items-center justify-center rounded-md"
-                    style={{
-                      color: kind === "hospital" ? FACILITY_COLORS.hospital : FACILITY_COLORS.emergency,
-                      backgroundColor: kind === "hospital" ? `${FACILITY_COLORS.hospital}1a` : `${FACILITY_COLORS.emergency}1a`,
-                    }}
-                  >
-                    {FACILITY_KIND_META[kind].icon}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-[11px] text-ink-300">{FACILITY_KIND_META[kind].label}</span>
-                  <span className="num text-sm font-semibold text-white">{byKind[kind]}</span>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex items-center justify-between gap-2 px-4 pb-1 pt-3">
-              <p className="text-[11px] text-ink-400">
-                <span className="num text-ink-200">{formatNumber(visible.length)}</span>{" "}
-                {visible.length === 1 ? "facility" : "facilities"} ·{" "}
-                {source === "event" ? `within ${FACILITY_SEARCH_RADIUS_KM} km of epicenter` : selected ? "distance from epicenter" : "distance from area center"}
-              </p>
-              <div className="flex rounded-lg bg-white/[0.03] p-0.5" role="radiogroup" aria-label="Facility type">
-                {(["all", "hospital", "emergency"] as const).map((c) => (
+            <div className="grid grid-cols-3 gap-1.5 px-4 pt-3" role="radiogroup" aria-label="Filter by facility type">
+              {(["all", ...FACILITY_KINDS.map((k) => k.id)] as KindFilter[]).map((kind) => {
+                const active = filter === kind;
+                const def = kind === "all" ? null : FACILITY_KIND_BY_ID[kind];
+                return (
                   <button
-                    key={c}
+                    key={kind}
                     type="button"
                     role="radio"
-                    aria-checked={category === c}
-                    onClick={() => setCategory(c)}
-                    className={`rounded-md px-2 py-1 text-[11px] font-medium capitalize ${
-                      category === c ? "bg-ink-700 text-white" : "text-ink-400 hover:text-ink-100"
+                    aria-checked={active}
+                    onClick={() => setFilter(kind)}
+                    className={`flex min-w-0 items-center gap-1.5 rounded-lg border px-2 py-1.5 text-left transition-colors ${
+                      active ? "border-sky-400/40 bg-sky-400/10" : "border-white/[0.05] bg-white/[0.02] hover:border-white/[0.12]"
                     }`}
                   >
-                    {c === "hospital" ? "Hospitals" : c}
+                    {def ? (
+                      <span className="shrink-0" style={{ color: def.color }}>
+                        {FACILITY_KIND_META[def.id].icon}
+                      </span>
+                    ) : (
+                      <Layers className="h-3.5 w-3.5 shrink-0 text-ink-300" />
+                    )}
+                    <span className="min-w-0 flex-1 truncate text-[11px] text-ink-300">{def ? def.plural : "All"}</span>
+                    <span className="num text-xs font-semibold text-white">{kind === "all" ? facilities.length : byKind[kind]}</span>
                   </button>
-                ))}
-              </div>
+                );
+              })}
             </div>
+
+            <p className="px-4 pb-1 pt-3 text-[11px] text-ink-400">
+              <span className="num text-ink-200">{formatNumber(visible.length)}</span>{" "}
+              {visible.length === 1 ? "facility" : "facilities"} ·{" "}
+              {source === "event"
+                ? `within ${FACILITY_SEARCH_RADIUS_KM} km of epicenter`
+                : selected
+                  ? "straight-line distance from epicenter"
+                  : "straight-line distance from area center"}
+            </p>
 
             <div className="px-2 pb-4">
               {visible.length === 0 ? (
                 <p className="px-3 py-6 text-center text-xs text-ink-400">
-                  No {category === "all" ? "facilities" : category === "hospital" ? "hospitals" : "emergency facilities"} are
-                  mapped in this area.
+                  No {filter === "all" ? "facilities" : FACILITY_KIND_BY_ID[filter].plural.toLowerCase()} are mapped in this
+                  area.
                 </p>
               ) : (
-                <FacilityList facilities={visible} limit={200} onFocus={props.onFocus} />
+                <FacilityList facilities={visible} limit={200} onFocus={props.onFocus} selectedId={props.selectedFacilityId} />
               )}
               {visible.length > 200 && <p className="px-2 pt-2 text-[11px] text-ink-500">Showing the nearest 200.</p>}
             </div>

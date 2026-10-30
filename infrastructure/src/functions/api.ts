@@ -1,5 +1,6 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 import { createApi } from "../api/api";
+import { createWorldPopProvider } from "../api/population";
 import { createLogger } from "../shared/logger";
 import { S3ObjectStore } from "../shared/s3Store";
 
@@ -11,7 +12,7 @@ const handle = bucket
         staleAfterSeconds: Number(process.env.STALE_AFTER_SECONDS ?? "900"),
         cacheTtlMs: Number(process.env.CACHE_TTL_SECONDS ?? "30") * 1000,
       },
-      { store: new S3ObjectStore(bucket), logger },
+      { store: new S3ObjectStore(bucket), logger, population: createWorldPopProvider() },
     )
   : null;
 

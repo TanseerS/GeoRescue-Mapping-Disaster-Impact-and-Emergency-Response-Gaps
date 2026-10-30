@@ -1,6 +1,18 @@
-export type FacilityCategory = "hospital" | "emergency";
+/** Analysis groups: hospitals, clinics, and emergency services (fire, ambulance, police). */
+export type FacilityCategory = "hospital" | "clinic" | "emergency";
 
-export type FacilityKind = "hospital" | "fire_station" | "police" | "ambulance_station";
+export type FacilityKind = "hospital" | "clinic" | "fire_station" | "ambulance_station" | "police";
+
+/** Selected OpenStreetMap tags, kept verbatim when present. Nothing is inferred. */
+export interface FacilityDetails {
+  operator?: string;
+  phone?: string;
+  website?: string;
+  address?: string;
+  beds?: string;
+  openingHours?: string;
+  speciality?: string;
+}
 
 export interface Facility {
   /** OSM-qualified id, e.g. "node/123". */
@@ -12,6 +24,7 @@ export interface Facility {
   longitude: number;
   hasEmergencyDept: boolean | null;
   osmUrl: string;
+  details: FacilityDetails;
 }
 
 export interface FacilityWithDistance extends Facility {

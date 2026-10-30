@@ -10,6 +10,8 @@ import type { FacilityResult, FacilityWithDistance } from "../../types/facility"
 import { formatCoordinate, formatDateTime, formatMagnitude, formatRelative, formatUtc } from "../../utils/format";
 import { FacilityList } from "../facilities/FacilityList";
 import { FacilityStatus } from "../facilities/FacilityStatus";
+import { IntelligenceSummary } from "../intelligence/IntelligenceSummary";
+import type { IntelligenceBrief } from "../../utils/intelligence";
 
 interface EarthquakeDetailsProps {
   quake: Earthquake;
@@ -21,6 +23,8 @@ interface EarthquakeDetailsProps {
   onRetryFacilities: () => void;
   onOpenAnalysis: () => void;
   onFocusFacility: (facility: FacilityWithDistance) => void;
+  brief: IntelligenceBrief | null;
+  selectedFacilityId: string | null;
 }
 
 function Metric({ label, value, sub }: { label: string; value: ReactNode; sub?: ReactNode }) {
@@ -36,7 +40,8 @@ function Metric({ label, value, sub }: { label: string; value: ReactNode; sub?: 
 export function EarthquakeDetails(props: EarthquakeDetailsProps) {
   const { quake, result, analysis, now } = props;
   const severity = SEVERITY_BY_ID[quake.severity];
-  const within = analysis?.radii.find((r) => r.radiusKm === FACILITY_SEARCH_RADIUS_KM);
+  const within = analysis?.radii[analysis.radii.length - 1];
+  const outerKm = within?.radiusKm ?? FACILITY_SEARCH_RADIUS_KM;
 
   return (
     <div className="animate-fade-in">
@@ -103,6 +108,8 @@ export function EarthquakeDetails(props: EarthquakeDetailsProps) {
         </div>
       </div>
 
+      {props.brief && <IntelligenceSummary brief={props.brief} />}
+
       <Section title="Event details">
         <div className="grid grid-cols-2 gap-2">
           <Metric label="Depth" value={`${quake.depthKm.toFixed(1)} km`} sub={quake.depthKm < 70 ? "Shallow focus" : quake.depthKm < 300 ? "Intermediate" : "Deep focus"} />
@@ -121,26 +128,27 @@ export function EarthquakeDetails(props: EarthquakeDetailsProps) {
       </Section>
 
       <Section
-        title={`Within ${FACILITY_SEARCH_RADIUS_KM} km`}
+        title={`Within ${outerKm} km`}
         aside={<span className="text-[10.5px] text-ink-500">OpenStreetMap</span>}
       >
         {result?.status === "success" && analysis ? (
           <>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <CountTile color={FACILITY_COLORS.hospital} label="Hospitals" value={within?.hospitals ?? 0} />
-              <CountTile color={FACILITY_COLORS.emergency} label="Emergency facilities" value={within?.emergency ?? 0} />
+              <CountTile color={FACILITY_COLORS.hospital} label="Clinics" value={within?.clinics ?? 0} />
+              <CountTile color={FACILITY_COLORS.emergency} label="Emergency" value={within?.emergency ?? 0} />
             </div>
             <div className="mt-3">
               {analysis.facilities.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-white/[0.08] px-3 py-4 text-center text-xs text-ink-400">
                   <Layers3 className="mx-auto mb-1.5 h-4 w-4 text-ink-500" />
-                  No hospitals or emergency facilities are mapped in OpenStreetMap within {FACILITY_SEARCH_RADIUS_KM} km of
-                  this epicenter.
+                  No hospitals, clinics or emergency services are mapped in OpenStreetMap within {outerKm} km of this
+                  epicenter.
                 </div>
               ) : (
                 <>
                   <p className="mb-1.5 text-[11px] text-ink-400">Nearest facilities by straight-line distance</p>
-                  <FacilityList facilities={analysis.facilities} limit={8} onFocus={props.onFocusFacility} />
+                  <FacilityList facilities={analysis.facilities} limit={8} onFocus={props.onFocusFacility} selectedId={props.selectedFacilityId} />
                   {analysis.facilities.length > 8 && (
                     <p className="mt-2 px-2 text-[11px] text-ink-500">
                       + {analysis.facilities.length - 8} more — see Emergency Facilities
@@ -162,8 +170,8 @@ function CountTile({ color, label, value }: { color: string; label: string; valu
   return (
     <div className="panel-muted px-3 py-2.5">
       <div className="flex items-center gap-1.5">
-        <span className="h-2 w-2 rounded-sm" style={{ backgroundColor: color }} />
-        <span className="text-[11px] text-ink-300">{label}</span>
+        <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: color }} />
+        <span className="truncate text-[11px] text-ink-300">{label}</span>
       </div>
       <p className="num mt-1 text-xl font-semibold text-white">{value}</p>
     </div>

@@ -14,7 +14,12 @@ import type { ResolvedMapStyle } from "../services/mapStyle";
 import type { GapAnalysis } from "../types/analysis";
 import type { Earthquake, EarthquakeFeed, EarthquakeFilters } from "../types/earthquake";
 import type { Facility, FacilityResult, FacilityWithDistance } from "../types/facility";
-import type { LayerVisibility, ViewId } from "../types/ui";
+import type { LayerVisibility, MapSettings, ViewId } from "../types/ui";
+import type { AnalysisRadii } from "../config/constants";
+import { FacilityCard } from "../features/facilities/FacilityCard";
+import type { PopulationState } from "../hooks/usePopulation";
+import type { RouteState } from "../hooks/useRoute";
+import type { IntelligenceBrief } from "../utils/intelligence";
 import type { EarthquakeStats } from "../utils/stats";
 import { AboutPage } from "./AboutPage";
 
@@ -51,6 +56,18 @@ interface DashboardPageProps {
   onRetryArea: () => void;
   onViewportChange: (viewport: MapViewport) => void;
   onStyleChange: (style: ResolvedMapStyle) => void;
+  mapSettings: MapSettings;
+  onMapSettingsChange: (settings: MapSettings) => void;
+  radii: AnalysisRadii;
+  onRadiiChange: (radii: AnalysisRadii) => void;
+  population: PopulationState;
+  onRetryPopulation: () => void;
+  routing: { enabled: boolean; state: RouteState; request: (f: Facility) => void; clear: () => void };
+  routeCoordinates: [number, number][] | null;
+  brief: IntelligenceBrief | null;
+  selectedFacility: Facility | null;
+  onSelectFacility: (id: string | null) => void;
+  onFocusRegion: (region: string) => void;
 }
 
 export function DashboardPage(props: DashboardPageProps) {
@@ -67,6 +84,8 @@ export function DashboardPage(props: DashboardPageProps) {
       onRetryFacilities={props.onRetrySelected}
       onOpenAnalysis={() => props.onViewChange("analysis")}
       onFocusFacility={props.onFocusFacility}
+      brief={props.brief}
+      selectedFacilityId={props.selectedFacility?.id ?? null}
     />
   ) : null;
 
@@ -84,6 +103,7 @@ export function DashboardPage(props: DashboardPageProps) {
           onRetryArea={props.onRetryArea}
           onRetrySelected={props.onRetrySelected}
           onFocus={props.onFocusFacility}
+          selectedFacilityId={props.selectedFacility?.id ?? null}
         />
       );
       break;
@@ -94,6 +114,11 @@ export function DashboardPage(props: DashboardPageProps) {
           selected={selected}
           result={props.selectedResult}
           analysis={props.analysis}
+          radii={props.radii}
+          onRadiiChange={props.onRadiiChange}
+          population={props.population}
+          onRetryPopulation={props.onRetryPopulation}
+          routing={props.routing}
           onSelect={props.onSelect}
           onRetry={props.onRetrySelected}
           onFocusFacility={props.onFocusFacility}
@@ -121,6 +146,8 @@ export function DashboardPage(props: DashboardPageProps) {
             timeRange={props.filters.timeRange}
             now={now}
             onSelect={props.onSelect}
+            facilities={props.facilities}
+            onFocusRegion={props.onFocusRegion}
           />
         </div>
       );
@@ -141,6 +168,25 @@ export function DashboardPage(props: DashboardPageProps) {
             facilities={props.facilities}
             analysis={props.analysis}
             layers={props.layers}
+            settings={props.mapSettings}
+            onSettingsChange={props.onMapSettingsChange}
+            radii={props.radii}
+            selectedFacility={props.selectedFacility}
+            route={props.routeCoordinates}
+            onSelectFacility={props.onSelectFacility}
+            overlay={
+              props.selectedFacility ? (
+                <FacilityCard
+                  facility={props.selectedFacility}
+                  selected={selected}
+                  routing={props.routing}
+                  onClose={() => {
+                    props.onSelectFacility(null);
+                    props.routing.clear();
+                  }}
+                />
+              ) : null
+            }
             focus={props.focus}
             dataStatus={props.dataStatus}
             dataError={props.dataError}

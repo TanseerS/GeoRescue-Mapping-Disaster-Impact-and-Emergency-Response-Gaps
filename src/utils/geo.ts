@@ -4,7 +4,7 @@ import { point } from "@turf/helpers";
 import type { Feature, Polygon } from "geojson";
 import { ANALYSIS_RADII_KM } from "../config/constants";
 import type { GapAnalysis, ProximityRating } from "../types/analysis";
-import type { Facility, FacilityWithDistance } from "../types/facility";
+import type { Facility, FacilityKind, FacilityWithDistance } from "../types/facility";
 
 export interface LngLat {
   longitude: number;
@@ -28,16 +28,27 @@ export function withDistances(center: LngLat, facilities: Facility[], maxKm = In
     .sort((a, b) => a.distanceKm - b.distanceKm);
 }
 
-export function rateProximity(nearestHospitalKm: number | null): ProximityRating {
-  if (nearestHospitalKm === null || nearestHospitalKm > 50) return "critical";
-  if (nearestHospitalKm <= 10) return "good";
-  if (nearestHospitalKm <= 25) return "moderate";
+/**
+ * Coverage class from the straight-line distance to the nearest mapped hospital:
+ * within the first radius = good, second = moderate, third = limited, beyond = critical.
+ */
+export function rateProximity(nearestHospitalKm: number | null, radii: readonly number[] = ANALYSIS_RADII_KM): ProximityRating {
+  const [inner, middle, outer] = radii;
+  if (nearestHospitalKm === null || nearestHospitalKm > outer) return "critical";
+  if (nearestHospitalKm <= inner) return "good";
+  if (nearestHospitalKm <= middle) return "moderate";
   return "limited";
 }
 
+const KINDS: FacilityKind[] = ["hospital", "clinic", "fire_station", "ambulance_station", "police"];
+
+function emptyByKind(): Record<FacilityKind, number> {
+  return { hospital: 0, clinic: 0, fire_station: 0, ambulance_station: 0, police: 0 };
+}
+
 /**
- * Proximity-based response gap estimate around an epicenter. Counts mapped facilities
- * inside each analysis radius and finds the nearest mapped hospital / emergency facility.
+ * Proximity-based response gap estimate around an epicenter. Counts mapped facilities of each
+ * type inside each analysis radius and finds the nearest mapped facility of each type.
  */
 export function analyzeGap(
   center: LngLat,
@@ -46,21 +57,28 @@ export function analyzeGap(
 ): GapAnalysis {
   const maxRadius = Math.max(...radii);
   const sorted = withDistances(center, facilities, maxRadius);
-  const nearestHospital = sorted.find((f) => f.category === "hospital") ?? null;
-  const nearestEmergency = sorted.find((f) => f.category === "emergency") ?? null;
+  const nearest = Object.fromEntries(KINDS.map((k) => [k, sorted.find((f) => f.kind === k) ?? null])) as GapAnalysis["nearest"];
 
   return {
     radii: radii.map((radiusKm) => {
-      const inside = sorted.filter((f) => f.distanceKm <= radiusKm);
+      const byKind = emptyByKind();
+      for (const f of sorted) {
+        if (f.distanceKm > radiusKm) break;
+        byKind[f.kind] += 1;
+      }
       return {
         radiusKm,
-        hospitals: inside.filter((f) => f.category === "hospital").length,
-        emergency: inside.filter((f) => f.category === "emergency").length,
+        hospitals: byKind.hospital,
+        clinics: byKind.clinic,
+        emergency: byKind.fire_station + byKind.ambulance_station + byKind.police,
+        byKind,
       };
     }),
-    nearestHospital,
-    nearestEmergency,
-    rating: rateProximity(nearestHospital ? nearestHospital.distanceKm : null),
+    nearest,
+    nearestHospital: nearest.hospital,
+    nearestFireStation: nearest.fire_station,
+    nearestEmergency: sorted.find((f) => f.category === "emergency") ?? null,
+    rating: rateProximity(nearest.hospital ? nearest.hospital.distanceKm : null, radii),
     facilities: sorted,
   };
 }

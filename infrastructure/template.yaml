@@ -42,6 +42,11 @@ Parameters:
     Default: "false"
     AllowedValues: ["true", "false"]
     Description: Create an Amazon Location Service API key restricted to map tiles and the referrers below.
+  EnableMapRouting:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Also allow the map API key to call Amazon Location Routes (geo-routes:CalculateRoutes) for driving routes.
   MapAllowedReferers:
     Type: CommaDelimitedList
     Default: "http://localhost:5173/*"
@@ -50,6 +55,7 @@ Parameters:
 Conditions:
   HasAlarmEmail: !Not [!Equals [!Ref AlarmEmail, ""]]
   ShouldCreateMapApiKey: !Equals [!Ref CreateMapApiKey, "true"]
+  MapRoutingEnabled: !Equals [!Ref EnableMapRouting, "true"]
 
 Globals:
   Function:
@@ -260,11 +266,12 @@ Resources:
         Banner:
           - "js=import { createRequire } from 'module'; const require = createRequire(import.meta.url);"
     Properties:
-      Description: Serves earthquake GeoJSON, ingestion metadata and health from S3.
+      Description: Serves earthquake GeoJSON, ingestion metadata and health from S3, and WorldPop population estimates.
       CodeUri: ./
       Handler: api.handler
       Role: !GetAtt ApiFunctionRole.Arn
-      Timeout: 10
+      # /population calls WorldPop (several seconds); HTTP API integrations time out at 30 s.
+      Timeout: 28
       LoggingConfig:
         LogGroup: !Ref ApiFunctionLogGroup
       Environment:
@@ -289,6 +296,12 @@ Resources:
           Properties:
             ApiId: !Ref HttpApi
             Path: /health
+            Method: GET
+        Population:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /population
             Method: GET
 
   # ─── Monitoring ─────────────────────────────────────────────────────────────
@@ -328,10 +341,17 @@ Resources:
       Description: GeoRescue browser map key (tiles only, referrer-restricted)
       NoExpiry: true
       Restrictions:
-        # Style descriptors, sprites and glyphs need no authorization; tiles are the only gated call.
-        AllowActions: [geo-maps:GetTile]
-        AllowResources:
-          - !Sub "arn:${AWS::Partition}:geo-maps:${AWS::Region}::provider/default"
+        # Style descriptors, sprites and glyphs need no authorization; tiles are the only gated map call.
+        # Routing is added only when EnableMapRouting=true.
+        AllowActions: !If
+          - MapRoutingEnabled
+          - [geo-maps:GetTile, geo-routes:CalculateRoutes]
+          - [geo-maps:GetTile]
+        AllowResources: !If
+          - MapRoutingEnabled
+          - - !Sub "arn:${AWS::Partition}:geo-maps:${AWS::Region}::provider/default"
+            - !Sub "arn:${AWS::Partition}:geo-routes:${AWS::Region}::provider/default"
+          - - !Sub "arn:${AWS::Partition}:geo-maps:${AWS::Region}::provider/default"
         AllowReferers: !Ref MapAllowedReferers
 
 Outputs:

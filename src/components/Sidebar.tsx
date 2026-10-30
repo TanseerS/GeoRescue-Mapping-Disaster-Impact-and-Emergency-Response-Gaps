@@ -8,13 +8,12 @@ import {
   Map as MapIcon,
   RotateCcw,
   ShieldAlert,
-  Siren,
   Users,
   Waves,
   X,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { FACILITY_COLORS, FEEDS, MAGNITUDE_OPTIONS, SEVERITIES, TIME_RANGES } from "../config/constants";
+import { FACILITY_KINDS, FEEDS, MAGNITUDE_OPTIONS, SEVERITIES, TIME_RANGES } from "../config/constants";
 import type { EarthquakeFilters, SeverityLevel } from "../types/earthquake";
 import type { LayerVisibility, ViewId } from "../types/ui";
 import { Toggle } from "./ui/Toggle";
@@ -46,6 +45,10 @@ interface SidebarProps {
 export function Sidebar(props: SidebarProps) {
   const { view, onViewChange, layers, onLayersChange, filters, onFiltersChange, collapsed, mobile } = props;
   const compact = collapsed && !mobile;
+
+  const allFacilitiesOn = FACILITY_KINDS.every((k) => layers.facilities[k.id]);
+  const setAllFacilities = (on: boolean) =>
+    onLayersChange({ ...layers, facilities: Object.fromEntries(FACILITY_KINDS.map((k) => [k.id, on])) as LayerVisibility["facilities"] });
 
   const toggleSeverity = (id: SeverityLevel) => {
     const next = filters.severities.includes(id)
@@ -111,23 +114,50 @@ export function Sidebar(props: SidebarProps) {
                 checked={layers.earthquakes}
                 onChange={(v) => onLayersChange({ ...layers, earthquakes: v })}
               />
+              <div className="mt-2 px-2">
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-xs text-ink-300">Facilities (OpenStreetMap)</span>
+                  <button
+                    type="button"
+                    onClick={() => setAllFacilities(!allFacilitiesOn)}
+                    className="rounded px-1 text-[10.5px] font-medium text-sky-300 hover:bg-sky-400/10"
+                  >
+                    {allFacilitiesOn ? "Hide all" : "Show all"}
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 gap-1">
+                  {FACILITY_KINDS.map((kind) => {
+                    const on = layers.facilities[kind.id];
+                    return (
+                      <label
+                        key={kind.id}
+                        className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${
+                          on ? "border-white/[0.08] bg-white/[0.03] text-ink-100" : "border-transparent text-ink-500 hover:text-ink-300"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="sr-only"
+                          checked={on}
+                          onChange={() => onLayersChange({ ...layers, facilities: { ...layers.facilities, [kind.id]: !on } })}
+                        />
+                        <span
+                          className="flex h-3.5 w-3.5 items-center justify-center rounded-[4px] border"
+                          style={{ borderColor: kind.color, backgroundColor: on ? kind.color : "transparent" }}
+                          aria-hidden="true"
+                        >
+                          {on && <span className="h-1.5 w-1.5 rounded-[1px] bg-ink-950" />}
+                        </span>
+                        <span className="flex-1 font-medium">{kind.plural}</span>
+                        <span className="text-[10px] text-ink-500">{kind.group === "health" ? "Health" : "Emergency"}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
               <Toggle
-                label="Hospitals"
-                icon={<span className="text-[11px] font-bold" style={{ color: FACILITY_COLORS.hospital }}>H</span>}
-                checked={layers.hospitals}
-                onChange={(v) => onLayersChange({ ...layers, hospitals: v })}
-                accent={FACILITY_COLORS.hospital}
-              />
-              <Toggle
-                label="Emergency facilities"
-                icon={<Siren className="h-3.5 w-3.5" style={{ color: FACILITY_COLORS.emergency }} />}
-                checked={layers.emergency}
-                onChange={(v) => onLayersChange({ ...layers, emergency: v })}
-                accent={FACILITY_COLORS.emergency}
-              />
-              <Toggle
-                label="Population density"
-                hint="No open dataset connected"
+                label="Population density layer"
+                hint="Not available · see exposure estimate"
                 icon={<Users className="h-3.5 w-3.5" />}
                 checked={false}
                 onChange={() => undefined}

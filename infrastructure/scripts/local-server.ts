@@ -8,6 +8,7 @@
  */
 import { createServer } from "node:http";
 import { createApi } from "../src/api/api";
+import { createWorldPopProvider } from "../src/api/population";
 import { runIngestion } from "../src/ingest/ingest";
 import { createLogger } from "../src/shared/logger";
 import { MemoryObjectStore } from "../src/shared/storage";
@@ -22,7 +23,7 @@ const intervalMs = Number(process.env.INGEST_INTERVAL_SECONDS ?? "300") * 1000;
 const store = new MemoryObjectStore();
 const logger = createLogger({ env: "local" });
 const config = { usgsBaseUrl: "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary", windowDays: 30 };
-const handle = createApi({ staleAfterSeconds: 900, cacheTtlMs: 5_000 }, { store, logger });
+const handle = createApi({ staleAfterSeconds: 900, cacheTtlMs: 5_000 }, { store, logger, population: createWorldPopProvider() });
 
 async function ingest() {
   try {
