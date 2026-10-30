@@ -75,7 +75,7 @@ export function StatsBar({ stats, loading, facilityCount, hospitalCount, analyze
         loading={loading}
       />
       <StatCard
-        label="Avg magnitude"
+        label="Avg mag."
         value={stats.averageMagnitude === null ? "—" : formatMagnitude(stats.averageMagnitude)}
         detail={stats.maxMagnitude === null ? "No events" : `Peak M ${formatMagnitude(stats.maxMagnitude)}`}
         icon={<Gauge className="h-4 w-4" />}

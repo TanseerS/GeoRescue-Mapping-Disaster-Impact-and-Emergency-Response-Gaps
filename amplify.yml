@@ -1,0 +1,19 @@
+# AWS Amplify Hosting build specification for the GeoRescue frontend (repository root).
+# The infrastructure/ directory is deployed separately with AWS SAM and is not built here.
+# Set VITE_* environment variables in the Amplify console; they are embedded at build time.
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - npm ci
+    build:
+      commands:
+        - npm run build
+  artifacts:
+    baseDirectory: dist
+    files:
+      - "**/*"
+  cache:
+    paths:
+      - node_modules/**/*

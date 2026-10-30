@@ -14,7 +14,7 @@ React app ◄── API Gateway (HTTP API, CORS) ◄── Lambda: api ◄──
 | `IngestFunction` (Node.js 24, arm64, 512 MB, 90 s) | Fetches USGS `all_day`, validates and normalizes it, merges it into the rolling window and writes to S3. |
 | `DataBucket` (S3) | Private GeoJSON storage. Block Public Access, SSE-S3, TLS-only policy, history expiry. Retained when the stack is deleted. |
 | `ApiFunction` (Node.js 24, arm64, 512 MB, 28 s) | Serves `/earthquakes`, `/earthquakes/metadata` and `/health` from S3, and proxies WorldPop population estimates (`/population`). |
-| `HttpApi` (API Gateway v2) | Public HTTPS endpoint with CORS limited to `AllowedOrigins`, throttling and JSON access logs. |
+| `HttpApi` (API Gateway v2) | Public HTTPS endpoint with CORS limited to `AllowedOrigins`, stage and per-route throttling, and JSON access logs. |
 | `IngestionErrorsAlarm` (+ optional SNS email) | Fires when ingestion fails in 2 of 3 consecutive 5-minute periods. |
 | `MapApiKey` (optional) | Amazon Location API key limited to `geo-maps:GetTile` (plus `geo-routes:CalculateRoutes` when `EnableMapRouting=true`) and your referrers. |
 
@@ -44,6 +44,8 @@ All files are USGS-format GeoJSON `FeatureCollection`s. Each feature keeps its o
 - Node.js 20+ and npm. `sam build` bundles with esbuild locally; Docker is not required.
 
 ## Deploy
+
+> For the complete end-to-end guide (API verification, Amazon Location key, Amplify Hosting for the frontend, and teardown), see [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md). The commands below cover the stack itself.
 
 ```bash
 cd infrastructure
@@ -171,7 +173,7 @@ Other signals: the `IngestionErrorsAlarm` alarm, the scheduler's SQS dead-letter
 
 - **IAM least privilege.** The ingestion role can only `GetObject`/`PutObject` under `earthquakes/*` and `metadata/*`, and the API role can only `GetObject` there. Both also have `ListBucket` on the bucket, so a missing key returns 404 instead of 403. Each function can write only to its own log group; SAM's broader default `AWSLambdaBasicExecutionRole` is not attached. The scheduler role can only invoke the ingestion function and send to its dead-letter queue.
 - **S3.** All four Block Public Access settings are on, `BucketOwnerEnforced` disables ACLs, SSE-S3 encrypts data at rest, and a bucket policy denies non-TLS requests. Nothing is publicly readable; the browser only reaches data through the API.
-- **API.** CORS allows only `AllowedOrigins`, routes are `GET`-only, stage throttling is 20 req/s with a burst of 50, and error responses never include internal details.
+- **API.** CORS allows only `AllowedOrigins`, and routes are `GET`-only. Stage throttling is 20 req/s with a burst of 50. The WorldPop-backed routes are throttled tighter: `/population` allows a burst of 5 at 1 req/s, and `/population/tasks` a burst of 10 at 5 req/s. Error responses never include internal details. Blank or out-of-range parameters are rejected with `400`.
 - **Credentials.** None are stored anywhere. Lambdas use their execution roles. The optional map key is a browser-safe Amazon Location API key limited to `geo-maps:GetTile` on `arn:aws:geo-maps:<region>::provider/default` (and, only if enabled, `geo-routes:CalculateRoutes` on `arn:aws:geo-routes:<region>::provider/default`) and to your referrers.
 - **Outbound calls.** The API Lambda calls only the WorldPop API. It builds URLs from validated numbers, and task IDs must match a UUID pattern, so requests can't be redirected to other hosts or paths.
 - **Network.** No VPC or NAT Gateway; Lambdas reach USGS and S3 over the public AWS network.
@@ -211,7 +213,7 @@ Set `PORT`, `ALLOWED_ORIGINS` or `INGEST_INTERVAL_SECONDS` to override the defau
 ## Tear down
 
 ```bash
-sam delete --stack-name georescue
+sam delete --stack-name georescue   # the map API key is created with ForceDelete, so recent use does not block deletion
 # The data bucket is retained by design. Empty and remove it when you no longer need the data:
 aws s3 rm "s3://<DataBucketName>" --recursive
 aws s3 rb "s3://<DataBucketName>"

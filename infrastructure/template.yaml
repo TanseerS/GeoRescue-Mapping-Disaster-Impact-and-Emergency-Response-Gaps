@@ -353,6 +353,8 @@ Resources:
       KeyName: !Sub "${AWS::StackName}-maps"
       Description: GeoRescue browser map key (tiles only, referrer-restricted)
       NoExpiry: true
+      # Allows stack deletion even if the key was used in the last 90 days.
+      ForceDelete: true
       Restrictions:
         # Style descriptors, sprites and glyphs need no authorization; tiles are the only gated map call.
         # Routing is added only when EnableMapRouting=true.

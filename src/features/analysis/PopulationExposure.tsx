@@ -56,7 +56,7 @@ export function PopulationExposure({ state, onRetry }: PopulationExposureProps) 
         {data.dataset} {data.year} ({data.resolution}, {data.license}). Modelled estimate of where people live, rounded to 3
         significant figures — not a casualty or impact estimate.{" "}
         <a href={data.sourceUrl} target="_blank" rel="noreferrer" className="text-sky-300 hover:underline">
-          Dataset
+          WorldPop
         </a>
       </p>
     </div>
