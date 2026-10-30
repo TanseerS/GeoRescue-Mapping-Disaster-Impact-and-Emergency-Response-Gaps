@@ -270,7 +270,7 @@ Resources:
       CodeUri: ./
       Handler: api.handler
       Role: !GetAtt ApiFunctionRole.Arn
-      # /population calls WorldPop (several seconds); HTTP API integrations time out at 30 s.
+      # /population submits WorldPop tasks (a few seconds each, in parallel); HTTP API integrations time out at 30 s.
       Timeout: 28
       LoggingConfig:
         LogGroup: !Ref ApiFunctionLogGroup
@@ -302,6 +302,12 @@ Resources:
           Properties:
             ApiId: !Ref HttpApi
             Path: /population
+            Method: GET
+        PopulationTasks:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /population/tasks
             Method: GET
 
   # ─── Monitoring ─────────────────────────────────────────────────────────────

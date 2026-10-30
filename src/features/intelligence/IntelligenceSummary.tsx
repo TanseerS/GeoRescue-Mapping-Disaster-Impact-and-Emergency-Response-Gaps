@@ -37,16 +37,18 @@ export function IntelligenceSummary({ brief }: { brief: IntelligenceBrief }) {
       <div className="space-y-2.5 px-3.5 py-3 text-[12.5px] leading-relaxed text-ink-200">
         {brief.coverage && (
           <p
-            className="flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs font-medium"
+            className="flex items-start gap-2 rounded-lg border px-2.5 py-1.5 text-xs font-medium"
             style={{
               color: COVERAGE_COLORS[brief.coverage.rating],
               borderColor: `${COVERAGE_COLORS[brief.coverage.rating]}40`,
               backgroundColor: `${COVERAGE_COLORS[brief.coverage.rating]}10`,
             }}
           >
-            <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: COVERAGE_COLORS[brief.coverage.rating] }} />
-            {brief.coverage.label}
-            <span className="font-normal text-ink-300">· {brief.coverage.detail}</span>
+            <span className="mt-1 h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: COVERAGE_COLORS[brief.coverage.rating] }} />
+            <span>
+              {brief.coverage.label}
+              <span className="block font-normal text-ink-300">{brief.coverage.detail} (straight-line)</span>
+            </span>
           </p>
         )}
         {brief.sections.map((section) => (

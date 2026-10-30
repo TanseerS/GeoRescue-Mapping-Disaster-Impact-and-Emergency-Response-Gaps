@@ -4,7 +4,7 @@ import type { IngestionMetadata } from "../ingest/ingest";
 import { KEYS } from "../shared/keys";
 import type { Logger } from "../shared/logger";
 import type { ObjectStore } from "../shared/storage";
-import { circlePolygon, WORLDPOP_DATASET, type PopulationProvider } from "./population";
+import { circlePolygon, TASK_ID_PATTERN, WORLDPOP_DATASET, type PopulationProvider } from "./population";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RANGES = { day: DAY_MS, week: 7 * DAY_MS, month: 30 * DAY_MS } as const;
@@ -178,18 +178,19 @@ export function createApi(config: ApiConfig, deps: ApiDeps) {
   }
 
   const populationCache = new Map<string, { value: number; at: number }>();
+  const populationKey = (lat: number, lon: number, radiusKm: number) => `${lat.toFixed(3)},${lon.toFixed(3)},${radiusKm}`;
 
-  async function populationFor(lat: number, lon: number, radiusKm: number): Promise<number> {
-    const key = `${lat.toFixed(3)},${lon.toFixed(3)},${radiusKm}`;
+  function cachedPopulation(key: string): number | null {
     const hit = populationCache.get(key);
-    if (hit && now() - hit.at < POPULATION_CACHE_TTL_MS) return hit.value;
-    const value = await deps.population!.totalPopulation(circlePolygon(lat, lon, radiusKm));
-    if (populationCache.size >= POPULATION_CACHE_MAX) populationCache.delete(populationCache.keys().next().value as string);
-    populationCache.set(key, { value, at: now() });
-    return value;
+    return hit && now() - hit.at < POPULATION_CACHE_TTL_MS ? hit.value : null;
   }
 
-  async function population(query: ApiRequest["query"]): Promise<unknown> {
+  function cachePopulation(key: string, value: number) {
+    if (populationCache.size >= POPULATION_CACHE_MAX) populationCache.delete(populationCache.keys().next().value as string);
+    populationCache.set(key, { value, at: now() });
+  }
+
+  function populationParams(query: ApiRequest["query"]) {
     if (!deps.population) throw new HttpError(404, "Population estimates are not enabled.");
     const lat = Number(query.lat);
     const lon = Number(query.lon);
@@ -201,13 +202,47 @@ export function createApi(config: ApiConfig, deps: ApiDeps) {
       radii.length <= 3 &&
       radii.every((r, i) => Number.isFinite(r) && r >= 1 && r <= MAX_POPULATION_RADIUS_KM && (i === 0 || r > radii[i - 1]));
     if (!valid) throw new HttpError(400, `radii must be 1–3 increasing values between 1 and ${MAX_POPULATION_RADIUS_KM} km.`);
+    return { lat, lon, radii, provider: deps.population };
+  }
+
+  const populationResult = (radii: number[], totals: number[]) => ({
+    status: "complete",
+    ...WORLDPOP_DATASET,
+    results: radii.map((radiusKm, i) => ({ radiusKm, population: Math.round(totals[i]) })),
+  });
+
+  /** Step 1: return cached estimates, or start WorldPop tasks and answer 202 with their ids. */
+  async function population(query: ApiRequest["query"]): Promise<{ status: number; body: unknown }> {
+    const { lat, lon, radii, provider } = populationParams(query);
+    const cached = radii.map((r) => cachedPopulation(populationKey(lat, lon, r)));
+    if (cached.every((v) => v !== null)) return { status: 200, body: populationResult(radii, cached as number[]) };
     try {
-      const totals = await Promise.all(radii.map((r) => populationFor(lat, lon, r)));
-      return { ...WORLDPOP_DATASET, results: radii.map((radiusKm, i) => ({ radiusKm, population: Math.round(totals[i]) })) };
+      const taskIds = await Promise.all(radii.map((r) => provider.submit(circlePolygon(lat, lon, r))));
+      return { status: 202, body: { status: "pending", retryAfterMs: 3000, tasks: taskIds } };
     } catch (err) {
-      deps.logger.warn("population.upstream.failed", { error: err });
+      deps.logger.warn("population.submit.failed", { error: err });
       throw new HttpError(502, "The WorldPop population service is unavailable. Retry shortly.");
     }
+  }
+
+  /** Step 2: poll WorldPop tasks; 200 with estimates once every task has finished. */
+  async function populationTasks(query: ApiRequest["query"]): Promise<{ status: number; body: unknown }> {
+    const { lat, lon, radii, provider } = populationParams(query);
+    const ids = (query.ids ?? "").split(",").map((id) => id.trim());
+    if (ids.length !== radii.length || !ids.every((id) => TASK_ID_PATTERN.test(id))) {
+      throw new HttpError(400, "ids must list one WorldPop task id per radius.");
+    }
+    let statuses;
+    try {
+      statuses = await Promise.all(ids.map((id) => provider.status(id)));
+    } catch (err) {
+      deps.logger.warn("population.status.failed", { error: err });
+      throw new HttpError(502, "The WorldPop population service is unavailable. Retry shortly.");
+    }
+    if (statuses.some((s) => s.state !== "finished")) return { status: 202, body: { status: "pending", retryAfterMs: 3000, tasks: ids } };
+    const totals = statuses.map((s) => (s.state === "finished" ? s.total : 0));
+    radii.forEach((r, i) => cachePopulation(populationKey(lat, lon, r), totals[i]));
+    return { status: 200, body: populationResult(radii, totals) };
   }
 
   function respond(status: number, body: unknown, req: ApiRequest, cacheControl: string, extra: Record<string, string> = {}): ApiResponse {
@@ -249,9 +284,16 @@ export function createApi(config: ApiConfig, deps: ApiDeps) {
         case "/earthquakes":
           response = respond(200, await earthquakes(req.query), req, "public, max-age=60");
           break;
-        case "/population":
-          response = respond(200, await population(req.query), req, "public, max-age=86400");
+        case "/population": {
+          const result = await population(req.query);
+          response = respond(result.status, result.body, req, result.status === 200 ? "public, max-age=86400" : "no-store");
           break;
+        }
+        case "/population/tasks": {
+          const result = await populationTasks(req.query);
+          response = respond(result.status, result.body, req, result.status === 200 ? "public, max-age=86400" : "no-store");
+          break;
+        }
         default:
           throw new HttpError(404, "Not found.");
       }

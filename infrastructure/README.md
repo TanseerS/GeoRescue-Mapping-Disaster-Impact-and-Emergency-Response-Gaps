@@ -13,10 +13,10 @@ React app ◄── API Gateway (HTTP API, CORS) ◄── Lambda: api ◄──
 | `AWS::Scheduler::Schedule` | Runs ingestion on `rate(5 minutes)`. Retries delivery failures twice, with an SQS dead-letter queue. |
 | `IngestFunction` (Node.js 24, arm64, 512 MB, 90 s) | Fetches USGS `all_day`, validates and normalizes it, merges it into the rolling window and writes to S3. |
 | `DataBucket` (S3) | Private GeoJSON storage. Block Public Access, SSE-S3, TLS-only policy, history expiry. Retained when the stack is deleted. |
-| `ApiFunction` (Node.js 24, arm64, 512 MB, 10 s) | Serves `/earthquakes`, `/earthquakes/metadata` and `/health` from S3. |
+| `ApiFunction` (Node.js 24, arm64, 512 MB, 28 s) | Serves `/earthquakes`, `/earthquakes/metadata` and `/health` from S3, and proxies WorldPop population estimates (`/population`). |
 | `HttpApi` (API Gateway v2) | Public HTTPS endpoint with CORS limited to `AllowedOrigins`, throttling and JSON access logs. |
 | `IngestionErrorsAlarm` (+ optional SNS email) | Fires when ingestion fails in 2 of 3 consecutive 5-minute periods. |
-| `MapApiKey` (optional) | Amazon Location API key limited to `geo-maps:GetTile` and your referrers. |
+| `MapApiKey` (optional) | Amazon Location API key limited to `geo-maps:GetTile` (plus `geo-routes:CalculateRoutes` when `EnableMapRouting=true`) and your referrers. |
 
 ## S3 layout
 
@@ -78,6 +78,7 @@ sam deploy \
 | `LogRetentionDays` | `14` | CloudWatch Logs retention for both functions and API access logs |
 | `AlarmEmail` | *(empty)* | If set, an SNS topic emails alarm state changes. Confirm the subscription email you receive. |
 | `CreateMapApiKey` | `false` | Create a referrer-restricted Amazon Location API key |
+| `EnableMapRouting` | `false` | Also allow the map key to calculate driving routes (`geo-routes:CalculateRoutes`) |
 | `MapAllowedReferers` | `http://localhost:5173/*` | Referrer patterns for the map key (up to 5) |
 
 ### After deploying
@@ -94,7 +95,10 @@ curl "<ApiUrl>/health"
 curl "<ApiUrl>/earthquakes/metadata"
 curl --compressed "<ApiUrl>/earthquakes?range=day&minMagnitude=2.5"
 
-# 4. (If CreateMapApiKey=true) read the map key value for the frontend
+# 4. Population exposure (two-step: submit, then poll with the returned task ids)
+curl "<ApiUrl>/population?lat=38.27&lon=-122.75&radii=10,25,50"
+
+# 5. (If CreateMapApiKey=true) read the map key value for the frontend
 aws location describe-key --key-name georescue-maps --query Key --output text
 ```
 
@@ -103,7 +107,8 @@ Then configure the frontend in the repository root's `.env.local`:
 ```bash
 VITE_API_BASE_URL=<ApiUrl>
 VITE_AWS_REGION=<stack region>
-VITE_AWS_LOCATION_API_KEY=<key from step 4>
+VITE_AWS_LOCATION_API_KEY=<key from step 5>
+VITE_AWS_LOCATION_ENABLE_ROUTING=true   # only if deployed with EnableMapRouting=true
 ```
 
 ## API
@@ -126,6 +131,15 @@ Status codes: `200` OK · `400` invalid parameter · `413` response over the 6 M
 ### `GET /earthquakes/metadata`
 
 Returns ingestion status: `lastSuccessfulIngestion` (feed time, counts, merge statistics, history key), `lastAttempt`, `lastSuccessfulIngestionAt`, `ageSeconds`, `stale`, `windowDays`. Returns `404` before the first ingestion.
+
+### `GET /population` and `GET /population/tasks`
+
+These return estimated residents within up to three radii of a point, from the WorldPop gridded population dataset (2020, unconstrained, 3 arc-seconds ≈ 100 m, CC BY 4.0). WorldPop's own service can't be called from browsers (it sends no CORS headers), and its synchronous mode can exceed API Gateway's 30-second limit. So the API uses WorldPop **async tasks**:
+
+1. `GET /population?lat=38.27&lon=-122.75&radii=10,25,50` submits one WorldPop task per radius. It returns `202 {"status":"pending","tasks":[...],"retryAfterMs":3000}`, or `200` immediately when the estimate is already cached in the warm Lambda.
+2. `GET /population/tasks?lat=…&lon=…&radii=…&ids=<task ids>` returns `202` while the tasks are still running, then `200 {"status":"complete","dataset":…,"year":2020,"resolution":…,"license":"CC BY 4.0","results":[{"radiusKm":10,"population":71150}, …]}`.
+
+Validation: `lat`/`lon` must be in range, `radii` must be 1–3 increasing values between 1 and 50 km, and task IDs must be UUIDs. If WorldPop fails, the response is `502` with a generic message. The frontend polls automatically and caches results for 7 days. These figures are modelled residential population, **not casualty or impact estimates**.
 
 ### `GET /health`
 
@@ -158,7 +172,8 @@ Other signals: the `IngestionErrorsAlarm` alarm, the scheduler's SQS dead-letter
 - **IAM least privilege.** The ingestion role can only `GetObject`/`PutObject` under `earthquakes/*` and `metadata/*`, and the API role can only `GetObject` there. Both also have `ListBucket` on the bucket, so a missing key returns 404 instead of 403. Each function can write only to its own log group; SAM's broader default `AWSLambdaBasicExecutionRole` is not attached. The scheduler role can only invoke the ingestion function and send to its dead-letter queue.
 - **S3.** All four Block Public Access settings are on, `BucketOwnerEnforced` disables ACLs, SSE-S3 encrypts data at rest, and a bucket policy denies non-TLS requests. Nothing is publicly readable; the browser only reaches data through the API.
 - **API.** CORS allows only `AllowedOrigins`, routes are `GET`-only, stage throttling is 20 req/s with a burst of 50, and error responses never include internal details.
-- **Credentials.** None are stored anywhere. Lambdas use their execution roles. The optional map key is a browser-safe Amazon Location API key limited to `geo-maps:GetTile` on `arn:aws:geo-maps:<region>::provider/default` and to your referrers.
+- **Credentials.** None are stored anywhere. Lambdas use their execution roles. The optional map key is a browser-safe Amazon Location API key limited to `geo-maps:GetTile` on `arn:aws:geo-maps:<region>::provider/default` (and, only if enabled, `geo-routes:CalculateRoutes` on `arn:aws:geo-routes:<region>::provider/default`) and to your referrers.
+- **Outbound calls.** The API Lambda calls only the WorldPop API. It builds URLs from validated numbers, and task IDs must match a UUID pattern, so requests can't be redirected to other hosts or paths.
 - **Network.** No VPC or NAT Gateway; Lambdas reach USGS and S3 over the public AWS network.
 
 ## Cost
@@ -172,7 +187,8 @@ These are estimates for us-east-1 with the default 5-minute schedule and light d
 | S3 | about 35,000 PUTs, about 20,000 GETs, under 1 GB stored | About $0.20 |
 | API Gateway HTTP API | per million requests | $1.00 per million; demo traffic costs cents |
 | CloudWatch Logs, 1 alarm, SQS | well under 1 GB of logs | About $0.10–0.60 (often within the free tier) |
-| Amazon Location (optional) | billed per map tile request | See [Amazon Location pricing](https://aws.amazon.com/location/pricing/) |
+| Amazon Location (optional) | billed per map tile and route request | See [Amazon Location pricing](https://aws.amazon.com/location/pricing/) |
+| WorldPop | external, free public API | No AWS cost beyond the Lambda time spent waiting on it |
 
 The pipeline itself typically costs **well under $1 per month**. There are no always-on resources (no NAT Gateway, database, VPC or provisioned capacity). To pause costs, deploy with `IngestionScheduleState=DISABLED`.
 

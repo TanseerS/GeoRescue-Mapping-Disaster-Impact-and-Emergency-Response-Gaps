@@ -54,3 +54,8 @@ export function formatCoordinate(value: number, axis: "lat" | "lon"): string {
 export function formatNumber(value: number): string {
   return new Intl.NumberFormat().format(value);
 }
+
+/** Compact axis labels (1.2k) so chart ticks never clip. */
+export function formatCompact(value: number): string {
+  return new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(value);
+}

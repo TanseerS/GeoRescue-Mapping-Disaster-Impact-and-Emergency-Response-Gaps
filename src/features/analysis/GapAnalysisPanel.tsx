@@ -12,7 +12,7 @@ import type { RouteState } from "../../hooks/useRoute";
 import type { GapAnalysis, ProximityRating } from "../../types/analysis";
 import type { Earthquake } from "../../types/earthquake";
 import type { Facility, FacilityResult, FacilityWithDistance } from "../../types/facility";
-import { formatDistance, formatMagnitude } from "../../utils/format";
+import { formatCompact, formatDistance, formatMagnitude } from "../../utils/format";
 import { coverageClasses } from "../../utils/intelligence";
 import { FacilityStatus } from "../facilities/FacilityStatus";
 import { PopulationExposure } from "./PopulationExposure";
@@ -115,6 +115,10 @@ export function GapAnalysisPanel(props: GapAnalysisPanelProps) {
             ) : (
               <AnalysisResult {...props} analysis={analysis} />
             )}
+            {/* Independent of OpenStreetMap: shown even while facilities load or if Overpass fails. */}
+            <Section title="Population exposure (estimate)">
+              <PopulationExposure state={props.population} onRetry={props.onRetryPopulation} />
+            </Section>
           </>
         )}
 
@@ -313,7 +317,7 @@ function AnalysisResult(props: GapAnalysisPanelProps & { analysis: GapAnalysis }
             <BarChart data={chartData} margin={{ top: 6, right: 4, bottom: 0, left: -18 }} barGap={2}>
               <CartesianGrid vertical={false} stroke="rgba(148,163,184,0.08)" />
               <XAxis dataKey="radius" tick={{ fill: "#94a3b8", fontSize: 11 }} tickLine={false} axisLine={{ stroke: "rgba(148,163,184,0.15)" }} />
-              <YAxis tick={{ fill: "#64748b", fontSize: 10 }} tickLine={false} axisLine={false} allowDecimals={false} width={44} />
+              <YAxis tick={{ fill: "#64748b", fontSize: 10 }} tickLine={false} axisLine={false} allowDecimals={false} width={44} tickFormatter={formatCompact} />
               <Tooltip cursor={{ fill: "rgba(148,163,184,0.06)" }} content={<ChartTooltip formatLabel={(l) => `Within ${l}`} unit="facilities" />} />
               <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: "#cbd5e1" }} />
               <Bar dataKey="Health" name="Hospitals + clinics" fill={FACILITY_COLORS.hospital} radius={[4, 4, 0, 0]} maxBarSize={22} />
@@ -321,10 +325,6 @@ function AnalysisResult(props: GapAnalysisPanelProps & { analysis: GapAnalysis }
             </BarChart>
           </ResponsiveContainer>
         </div>
-      </Section>
-
-      <Section title="Population exposure (estimate)">
-        <PopulationExposure state={props.population} onRetry={props.onRetryPopulation} />
       </Section>
     </div>
   );

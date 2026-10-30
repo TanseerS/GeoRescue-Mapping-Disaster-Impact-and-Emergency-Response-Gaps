@@ -8,17 +8,19 @@ Built for the **AWS Builder Weekend Challenge**.
 
 ## What it does
 
-- **Live earthquake map.** Real USGS events for the past 24 hours, 7 days or 30 days. Markers are clustered, sized by magnitude and colored by severity. The feed refreshes automatically every 5 minutes.
-- **Event inspection.** Click any marker to see magnitude, location, depth, local/UTC time, coordinates, USGS tsunami and PAGER flags, and the nearest mapped facilities with distances.
-- **Emergency facilities.** Hospitals, fire stations, police and ambulance stations come from OpenStreetMap (Overpass API). You can load them around a selected epicenter or scan the visible map area.
-- **Response gap analysis.** Turf.js counts hospitals within 10, 25 and 50 km, finds the nearest mapped hospital, and rates proximity from *hospital within 10 km* to *no mapped hospital within 50 km*.
-- **Situation overview.** Statistics, magnitude distribution, activity timeline, most active regions and strongest events. Everything is computed from the data that's actually loaded.
-- **AWS serverless data pipeline.** EventBridge Scheduler runs a Lambda every 5 minutes that ingests the USGS feed into Amazon S3. A second Lambda serves it through API Gateway. The header shows whether data comes from the **AWS API**, **USGS directly**, or a **USGS fallback** when the API is unreachable.
+- **Earthquake intelligence.** Live USGS events for the past 24 hours, 7 days or 30 days. You can switch between **individual markers**, **clusters** and a **magnitude-weighted heatmap**, and color events by **magnitude severity** or **focal depth**. Everything updates as soon as filters change.
+- **Emergency infrastructure.** Hospitals, clinics, fire stations, ambulance stations and police stations come from OpenStreetMap. Each type can be toggled and filtered separately. Click a facility to see its OSM details (only tags that exist) and its distance from the selected epicenter.
+- **Response gap analysis.** Pick configurable analysis radii (Urban 5/10/20, Standard 10/25/50, Rural 20/35/50, or custom). GeoRescue then counts every facility type within each radius, finds the nearest hospital and fire station, draws labeled rings on the map, and assigns a coverage class.
+- **Population exposure.** Estimated residents within each radius, from WorldPop's 2020 ~100 m gridded population dataset, served through the GeoRescue AWS API. These are clearly labeled as estimates, not casualty figures.
+- **Driving routes (optional).** Amazon Location Routes v2 calculates road distance and estimated drive time from a facility to the epicenter. Without it, the app shows straight-line distance only and never labels it as travel distance or time.
+- **Intelligence brief.** A deterministic, copyable summary of the selected event, built only from calculated values (no LLM), with its limitations stated.
+- **Overview analytics.** Magnitude categories, magnitude and depth distributions, activity over time, most active regions (click one to zoom the map there), the strongest events, and mapped facilities by type.
+- **AWS serverless data pipeline.** EventBridge Scheduler runs a Lambda every 5 minutes that ingests the USGS feed into Amazon S3. A second Lambda serves it through API Gateway. The header shows whether data comes from the **AWS API**, **USGS directly**, or a **USGS fallback**.
 - **Amazon Location Service basemap.** This is configurable through environment variables. If AWS isn't configured, or the key is rejected, the app falls back to an open basemap automatically.
 
-| Earthquake details | Response gap analysis |
-| --- | --- |
-| ![Earthquake details](docs/screenshots/earthquake-details.png) | ![Gap analysis](docs/screenshots/gap-analysis.png) |
+| Intelligence brief | Response gap analysis | Magnitude-weighted heatmap |
+| --- | --- | --- |
+| ![Earthquake details and intelligence brief](docs/screenshots/earthquake-details.png) | ![Response gap analysis with configurable radii](docs/screenshots/gap-analysis.png) | ![Earthquake heatmap](docs/screenshots/heatmap.png) |
 
 ## Tech stack
 
@@ -75,6 +77,8 @@ Ingestion fetches the USGS `all_day` feed with retries, validates it, and keeps 
 | `GET /earthquakes?range=day\|week\|month&since=&minMagnitude=&limit=` | USGS-format GeoJSON `FeatureCollection` from the rolling window (gzip-compressed) |
 | `GET /earthquakes/metadata` | Last successful ingestion, last attempt, data age and staleness |
 | `GET /health` | `200` when data is fresh (under 15 minutes old), otherwise `503` with `stale`, `no-data` or `error` |
+| `GET /population?lat=&lon=&radii=` | Starts WorldPop population estimates and returns `202` with task IDs (or `200` if cached) |
+| `GET /population/tasks?lat=&lon=&radii=&ids=` | Polls those tasks; returns `200` with residents per radius when complete |
 
 ### Deploying the AWS pipeline
 
@@ -148,6 +152,7 @@ Copy `.env.example` to `.env.local` and fill in what you need. Every variable is
 | `VITE_AWS_LOCATION_API_KEY` | Amazon Location API key. Enables the AWS basemap | *(empty → open basemap)* |
 | `VITE_AWS_LOCATION_MAP_STYLE` | `Standard`, `Monochrome`, `Hybrid` or `Satellite` | `Monochrome` |
 | `VITE_AWS_LOCATION_COLOR_SCHEME` | `Dark` or `Light` (Standard/Monochrome only) | `Dark` |
+| `VITE_AWS_LOCATION_ENABLE_ROUTING` | Enable driving routes (the key must allow `geo-routes:CalculateRoutes`) | `false` |
 | `VITE_FALLBACK_MAP_STYLE_URL` | Any MapLibre style URL used when AWS is unavailable | CARTO Dark Matter |
 | `VITE_USGS_FEED_BASE_URL` | USGS summary feed base URL | USGS public feed |
 | `VITE_OVERPASS_ENDPOINTS` | Comma-separated Overpass API mirrors, tried with failover | 3 public mirrors |
@@ -159,7 +164,17 @@ You can create the key in either of two ways:
 - **With the SAM stack.** Deploy with `CreateMapApiKey=true` and `MapAllowedReferers="http://localhost:5173/*,https://your-domain/*"`, then read the key with `aws location describe-key --key-name georescue-maps --query Key --output text`.
 - **In the console.** In the [Amazon Location console](https://console.aws.amazon.com/location/), go to **API keys** and create a key that allows only the action **`geo-maps:GetTile`** on resource `arn:aws:geo-maps:<region>::provider/default`. Style descriptors, sprites and glyphs don't require authorization, so tiles are the only call the key needs. Restrict it with **referrers** for your app's URLs, such as `http://localhost:5173/*` and your production domain.
 
-Then set `VITE_AWS_LOCATION_API_KEY` and `VITE_AWS_REGION` in `.env.local` and restart `npm run dev`. Invalid style, color scheme or region values fall back to safe defaults with a console warning. Tile requests are guaranteed to carry the key.
+Then set `VITE_AWS_LOCATION_API_KEY` and `VITE_AWS_REGION` in `.env.local` and restart `npm run dev`.
+
+### Enabling driving routes (optional)
+
+Routing uses the [Amazon Location Routes API v2](https://docs.aws.amazon.com/location/latest/developerguide/calculate-routes-origin-destination-waypoints.html) (`POST https://routes.geo.<region>.amazonaws.com/v2/routes?key=…`, `TravelMode: Car`) with the same browser API key.
+
+1. Allow **`geo-routes:CalculateRoutes`** on `arn:aws:geo-routes:<region>::provider/default` for the key. With SAM, deploy with `CreateMapApiKey=true EnableMapRouting=true`.
+2. Set `VITE_AWS_LOCATION_ENABLE_ROUTING=true` and restart the dev server.
+3. Click a facility (or use the nearest-hospital and nearest-fire-station cards in Response Gap Analysis), then choose **Driving route to epicenter**. The route is drawn on the map, with road distance and estimated duration.
+
+The duration is Amazon Location's estimate for typical traffic. It is not a live emergency response time. Offshore or off-network epicenters return a clear "no drivable route" message. Routing is unit-tested against the documented request and response format, but it hasn't been exercised against a live key in this repository. Invalid style, color scheme or region values fall back to safe defaults with a console warning. Tile requests are guaranteed to carry the key.
 
 The header badge and the **About** page show which basemap is active. The app uses the Amazon Location **Maps API v2** style descriptor (`https://maps.geo.{region}.amazonaws.com/v2/styles/{style}/descriptor`). The API key is the only credential, and it is a browser-safe key designed for this purpose. **Never put AWS access keys or secrets in `VITE_*` variables**, because they are embedded in the client bundle.
 
@@ -169,12 +184,31 @@ The header badge and the **About** page show which basemap is active. The app us
 | --- | --- | --- |
 | Earthquakes | [USGS GeoJSON summary feeds](https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php) (`all_day`, `all_week`, `all_month`), either directly or through the GeoRescue AWS API | Records without magnitude or coordinates are excluded, never estimated |
 | Facilities | [OpenStreetMap](https://www.openstreetmap.org/) via the [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) | `amenity=hospital\|fire_station\|police`, `healthcare=hospital`, `emergency=ambulance_station` |
+| Population | [WorldPop](https://www.worldpop.org/) Global Population 2020, unconstrained, 3 arc-seconds (~100 m), via the WorldPop stats API and the GeoRescue AWS API | CC BY 4.0. Modelled residential population, rounded to 3 significant figures |
+| Driving routes | Amazon Location Routes API v2 (optional) | Car travel mode, typical traffic |
 | Basemap | Amazon Location Service, or CARTO / OpenStreetMap as the fallback | |
 
 - **Severity bands** follow USGS feed thresholds: Minor < 2.5, Light 2.5–4.4, Moderate 4.5–5.9, Strong+ ≥ 6.0.
 - **Significant earthquakes** are events of magnitude 4.5 or higher.
-- **Gap analysis** uses Turf.js great-circle distances from the epicenter to each mapped facility within 50 km.
+- **Depth classes** follow standard seismological focal-depth classes: shallow 0–70 km, intermediate 70–300 km, deep > 300 km. The depth chart bins events at 10/30/70/150/300 km.
+- **Heatmap** is a magnitude-weighted kernel density: each event's weight rises from 0.04 at M0 to 1.0 at M6+. Large events dominate, and swarms of micro-quakes don't drown them out. Individual events fade in from zoom 6.
+- **Clusters** are colored by the strongest event in the cluster, or by mean depth in depth mode.
+- **Facility search.** One Overpass query per epicenter fetches all five facility types within 50 km (the maximum analysis radius).
+- **Gap analysis.** Turf.js computes the great-circle distance from the epicenter to every mapped facility. GeoRescue counts each type within the three analysis radii and finds the nearest facility of each type. "Emergency services" means fire, ambulance and police stations.
+- **Coverage classification** is based on the straight-line distance to the nearest *mapped* hospital, compared with the configured radii *r1 < r2 < r3*:
+
+  | Class | Rule (Standard preset) |
+  | --- | --- |
+  | Close hospital proximity | nearest hospital ≤ r1 (10 km) |
+  | Moderate proximity | r1 < distance ≤ r2 (10–25 km) |
+  | Limited proximity | r2 < distance ≤ r3 (25–50 km) |
+  | Potential coverage gap | no mapped hospital within r3 (50 km) |
+
+- **Population exposure.** For each radius, the API submits a geodesic circle polygon (48 vertices) to WorldPop's zonal statistics service, which sums the population grid cells inside it. Results are rounded to 3 significant figures in the UI.
+- **Intelligence brief.** Sentences are assembled deterministically from the values above. If a value is missing (for example, facilities failed to load), the brief says so instead of guessing.
 - **Facility lookups are resilient.** Requests are hedged across Overpass mirrors: the next mirror starts if one is slow or fails, and the first success wins. Real responses are cached in `localStorage` for 24 hours, so revisited areas load instantly. If every mirror fails, the UI shows a retry state. No facility data is ever fabricated.
+
+> **Population figures are estimates of where people live.** WorldPop is a modelled 2020 dataset. It does not reflect current population, time-of-day presence or displacement, and it says nothing about casualties or damage.
 
 > **Proximity is an estimate.** Straight-line distance does not account for roads, terrain, travel time, damage, facility capacity, staffing or real-time availability. OpenStreetMap coverage varies by region, so a missing facility does not prove none exists. GeoRescue supports prioritizing further investigation. It is not an emergency dispatch or alerting system.
 
@@ -190,22 +224,25 @@ src/
   components/        App shell (Header, Sidebar, StatsBar) and UI primitives
   config/            Environment parsing and domain constants
   features/
-    analysis/        Response gap analysis panel
+    analysis/        Response gap analysis, radius controls, population exposure
+    intelligence/    Deterministic intelligence brief
     earthquakes/     Details, list and overview insights
     facilities/      Facility panel, list and loading/error states
-    map/             MapLibre view, layers, icons, legend and overlays
-  hooks/             Data hooks (USGS feed, facility store, timers)
+    map/             MapLibre view, display modes, layers, icons, legend and overlays
+    pipeline/        AWS pipeline status card
+  hooks/             Data hooks (feed, facilities, population, routing, persisted settings)
   pages/             Dashboard layout and About page
-  services/          USGS, AWS API, Overpass, facility cache and map style clients
+  services/          USGS, AWS API, Overpass, WorldPop, routing and map style clients
   types/             Shared TypeScript types
-  utils/             Geospatial analysis, statistics, formatting
+  utils/             Geospatial analysis, statistics, intelligence brief, formatting
 ```
 
 Data fetching (`services/`, `hooks/`), map logic (`features/map/`), calculations (`utils/`) and presentation (`components/`, `features/`) are kept separate. The pure logic is covered by unit tests in `src/**/*.test.ts`.
 
 ## Known limitations
 
-- Population density is not shown, because no openly licensed dataset is connected yet. Its layer toggle is disabled and labeled to say so.
+- **Population.** Exposure estimates per radius require the GeoRescue API (deployed, or `npm run local`). Without it, the app explains how to enable them. A gridded population *map layer* isn't included (it would need raster tile hosting), so that toggle stays disabled and labeled. WorldPop's service is free but can be slow (5–25 s per task), so results are cached.
+- **Routing** is optional and requires an Amazon Location key with routing permission. It isn't verified against a live key here; unit tests cover the documented API format.
 - Public Overpass servers can be slow under load. A dense metro area may take 30–60 seconds the first time; after that it loads from the local cache.
 - Without `VITE_API_BASE_URL`, the app reads USGS directly from the browser. OpenStreetMap facilities are always fetched from the browser, because Overpass queries are per-location and on demand.
 - Until the first ingestion completes after deployment (up to 5 minutes, or run it manually), the API returns `503` and the app falls back to USGS.

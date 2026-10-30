@@ -8,7 +8,7 @@ export const WORLDPOP_DATASET = {
   year: 2020,
   resolution: "3 arc-second grid (~100 m)",
   license: "CC BY 4.0",
-  sourceUrl: "https://hub.worldpop.org/geodata/listing?id=64",
+  sourceUrl: "https://www.worldpop.org/",
 } as const;
 
 const EARTH_RADIUS_KM = 6371.0088;
@@ -28,8 +28,15 @@ export function circlePolygon(latitude: number, longitude: number, radiusKm: num
   return ring;
 }
 
+export type TaskStatus = { state: "pending" } | { state: "finished"; total: number };
+
+/**
+ * WorldPop's synchronous mode can exceed API Gateway's 30 s limit, so estimates run as WorldPop
+ * async tasks: submit returns a task id quickly and status is polled until the task finishes.
+ */
 export interface PopulationProvider {
-  totalPopulation(ring: [number, number][]): Promise<number>;
+  submit(ring: [number, number][]): Promise<string>;
+  status(taskId: string): Promise<TaskStatus>;
 }
 
 type FetchText = (url: string, init: { signal: AbortSignal; headers: Record<string, string> }) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
@@ -42,24 +49,45 @@ export function extractJson(body: string): unknown {
   return JSON.parse(body.slice(start, end + 1));
 }
 
+export const TASK_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+interface WorldPopBody {
+  status?: string;
+  error?: boolean;
+  error_message?: string | null;
+  taskid?: string;
+  data?: { total_population?: unknown };
+}
+
 export function createWorldPopProvider(options: { fetch?: FetchText; baseUrl?: string; timeoutMs?: number } = {}): PopulationProvider {
   const doFetch = options.fetch ?? (globalThis.fetch as unknown as FetchText);
-  const baseUrl = options.baseUrl ?? "https://api.worldpop.org/v1/services/stats";
-  const timeoutMs = options.timeoutMs ?? 20_000;
+  const baseUrl = (options.baseUrl ?? "https://api.worldpop.org/v1").replace(/\/$/, "");
+  // Stays under the API Lambda timeout (28 s) and the 30 s HTTP API integration limit.
+  const timeoutMs = options.timeoutMs ?? 25_000;
+
+  async function getJson(url: string): Promise<WorldPopBody> {
+    const res = await doFetch(url, { signal: AbortSignal.timeout(timeoutMs), headers: { Accept: "application/json", "User-Agent": "GeoRescue/1.0" } });
+    if (!res.ok) throw new Error(`WorldPop responded with HTTP ${res.status}`);
+    const body = extractJson(await res.text()) as WorldPopBody;
+    if (body.error) throw new Error(`WorldPop error: ${body.error_message ?? "unknown"}`);
+    return body;
+  }
+
   return {
-    async totalPopulation(ring) {
+    async submit(ring) {
       const geojson = { type: "FeatureCollection", features: [{ type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [ring] } }] };
-      const params = new URLSearchParams({ dataset: "wpgppop", year: String(WORLDPOP_DATASET.year), geojson: JSON.stringify(geojson), runasync: "false" });
-      const res = await doFetch(`${baseUrl}?${params.toString()}`, {
-        signal: AbortSignal.timeout(timeoutMs),
-        headers: { Accept: "application/json", "User-Agent": "GeoRescue/1.0" },
-      });
-      if (!res.ok) throw new Error(`WorldPop responded with HTTP ${res.status}`);
-      const data = extractJson(await res.text()) as { error?: boolean; error_message?: string | null; data?: { total_population?: unknown } };
-      if (data.error) throw new Error(`WorldPop error: ${data.error_message ?? "unknown"}`);
-      const total = data.data?.total_population;
+      const params = new URLSearchParams({ dataset: "wpgppop", year: String(WORLDPOP_DATASET.year), geojson: JSON.stringify(geojson), runasync: "true" });
+      const body = await getJson(`${baseUrl}/services/stats?${params.toString()}`);
+      if (!body.taskid || !TASK_ID_PATTERN.test(body.taskid)) throw new Error("WorldPop did not return a task id");
+      return body.taskid;
+    },
+    async status(taskId) {
+      if (!TASK_ID_PATTERN.test(taskId)) throw new Error("Invalid task id");
+      const body = await getJson(`${baseUrl}/tasks/${taskId}`);
+      if (body.status !== "finished") return { state: "pending" };
+      const total = body.data?.total_population;
       if (typeof total !== "number" || !Number.isFinite(total) || total < 0) throw new Error("WorldPop returned no population total");
-      return total;
+      return { state: "finished", total };
     },
   };
 }

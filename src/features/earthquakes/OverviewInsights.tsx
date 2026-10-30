@@ -7,7 +7,7 @@ import { MagnitudeChip, SeverityBadge } from "../../components/ui/SeverityBadge"
 import { DEPTH_CLASSES, FACILITY_COLORS, FEEDS, SEVERITY_BY_ID } from "../../config/constants";
 import type { Earthquake, EarthquakeFeed, TimeRange } from "../../types/earthquake";
 import type { Facility } from "../../types/facility";
-import { formatNumber, formatRelative } from "../../utils/format";
+import { formatCompact, formatNumber, formatRelative } from "../../utils/format";
 import {
   depthHistogram,
   eventTimeline,
@@ -125,7 +125,7 @@ function OverviewInsightsImpl({ earthquakes, stats, feed, timeRange, now, facili
               <BarChart data={histogram} margin={{ top: 6, right: 4, bottom: 0, left: -18 }} barCategoryGap={2}>
                 <CartesianGrid vertical={false} stroke="rgba(148,163,184,0.08)" />
                 <XAxis dataKey="label" tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: "rgba(148,163,184,0.15)" }} tickFormatter={(v) => `M${v}`} />
-                <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false} width={44} />
+                <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false} width={44} tickFormatter={formatCompact} />
                 <Tooltip cursor={{ fill: "rgba(148,163,184,0.06)" }} content={<ChartTooltip formatLabel={(l) => `Magnitude ${l}.0 – ${l}.9`} />} />
                 <Bar dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={28}>
                   {histogram.map((bin) => (
@@ -144,7 +144,7 @@ function OverviewInsightsImpl({ earthquakes, stats, feed, timeRange, now, facili
             <BarChart data={depths} margin={{ top: 6, right: 4, bottom: 0, left: -18 }} barCategoryGap={2}>
               <CartesianGrid vertical={false} stroke="rgba(148,163,184,0.08)" />
               <XAxis dataKey="label" tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: "rgba(148,163,184,0.15)" }} interval={0} />
-              <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false} width={44} />
+              <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false} width={44} tickFormatter={formatCompact} />
               <Tooltip cursor={{ fill: "rgba(148,163,184,0.06)" }} content={<ChartTooltip formatLabel={(l) => `Depth ${l} km`} />} />
               <Bar dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={30}>
                 {depths.map((bin) => (
@@ -169,7 +169,7 @@ function OverviewInsightsImpl({ earthquakes, stats, feed, timeRange, now, facili
             <BarChart data={timeline} margin={{ top: 6, right: 4, bottom: 0, left: -18 }} barCategoryGap={2}>
               <CartesianGrid vertical={false} stroke="rgba(148,163,184,0.08)" />
               <XAxis dataKey="label" tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: "rgba(148,163,184,0.15)" }} interval="preserveStartEnd" minTickGap={24} />
-              <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false} width={44} />
+              <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false} width={44} tickFormatter={formatCompact} />
               <Tooltip cursor={{ fill: "rgba(148,163,184,0.06)" }} content={<ChartTooltip />} />
               <Bar dataKey="count" fill="#38bdf8" fillOpacity={0.8} radius={[3, 3, 0, 0]} />
             </BarChart>

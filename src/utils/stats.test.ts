@@ -90,6 +90,8 @@ describe("depth and category analytics", () => {
     const events = [quake("a", 2, 0, 5, "5 km N of A, Alaska", -150, 60), quake("b", 2, 0, 5, "9 km S of B, Alaska", -140, 62), quake("c", 2, 0, 5, "X, Chile", -70, -30)];
     expect(regionBounds(events, "Alaska")).toEqual([[-150, 60], [-140, 62]]);
     expect(regionBounds(events, "Nowhere")).toBeNull();
+    const aleutians = [quake("w", 2, 0, 5, "A, Alaska", 178, 51), quake("e", 2, 0, 5, "B, Alaska", -175, 52)];
+    expect(regionBounds(aleutians, "Alaska")).toEqual([[178, 51], [185, 52]]);
   });
 
   it("counts mapped facilities by type", () => {

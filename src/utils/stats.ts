@@ -199,10 +199,15 @@ export function facilityDistribution(facilities: Facility[]): { kind: FacilityKi
 export function regionBounds(earthquakes: Earthquake[], region: string): [[number, number], [number, number]] | null {
   const events = earthquakes.filter((q) => regionOf(q.place) === region);
   if (events.length === 0) return null;
-  const lons = events.map((q) => q.longitude);
   const lats = events.map((q) => q.latitude);
+  const lons = events.map((q) => q.longitude);
+  // Regions such as the Aleutians straddle the antimeridian; shifting western longitudes by 360°
+  // can give a much tighter box (MapLibre accepts longitudes beyond 180).
+  const shifted = lons.map((lon) => (lon < 0 ? lon + 360 : lon));
+  const span = (values: number[]) => Math.max(...values) - Math.min(...values);
+  const best = span(shifted) < span(lons) ? shifted : lons;
   return [
-    [Math.min(...lons), Math.min(...lats)],
-    [Math.max(...lons), Math.max(...lats)],
+    [Math.min(...best), Math.min(...lats)],
+    [Math.max(...best), Math.max(...lats)],
   ];
 }
