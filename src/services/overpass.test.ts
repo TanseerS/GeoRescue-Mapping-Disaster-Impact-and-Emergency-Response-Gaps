@@ -1,11 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { buildOverpassQuery, facilityQueryKey, parseOverpassElements } from "./overpass";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { buildOverpassQuery, facilityQueryKey, fetchFacilities, parseOverpassElements } from "./overpass";
 
 describe("overpass service", () => {
   it("builds a radius query in meters", () => {
     const q = buildOverpassQuery({ type: "radius", latitude: 35.1, longitude: 139.2, radiusKm: 50 });
     expect(q).toContain("around:50000,35.10000,139.20000");
-    expect(q).toContain("\"amenity\"=\"hospital\"");
+    expect(q).toContain("\"amenity\"~\"^(hospital|fire_station|police)$\"");
     expect(q).toContain("out center tags;");
   });
 
@@ -30,5 +30,28 @@ describe("overpass service", () => {
     expect(facilities[0]).toMatchObject({ id: "node/1", kind: "hospital", category: "hospital", hasEmergencyDept: true });
     expect(facilities[1]).toMatchObject({ id: "way/2", kind: "fire_station", category: "emergency", name: "Unnamed fire station" });
     expect(facilities[2]).toMatchObject({ kind: "ambulance_station", category: "emergency" });
+  });
+});
+
+describe("fetchFacilities failover", () => {
+  const okBody = { elements: [{ type: "node", id: 9, lat: 1, lon: 2, tags: { amenity: "hospital", name: "Mirror" } }] };
+  const query = { type: "radius", latitude: 1, longitude: 2, radiusKm: 50 } as const;
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("falls through to the next mirror when the first fails", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("busy", { status: 502 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(okBody), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const facilities = await fetchFacilities(query);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(facilities[0]).toMatchObject({ id: "node/9", name: "Mirror" });
+  });
+
+  it("reports an error when every mirror fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => new Response("", { status: 429 })));
+    await expect(fetchFacilities(query)).rejects.toThrow(/busy or unreachable/);
   });
 });

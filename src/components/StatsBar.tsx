@@ -56,7 +56,7 @@ interface StatsBarProps {
 export function StatsBar({ stats, loading, facilityCount, hospitalCount, analyzedAreas, onSelectStrongest }: StatsBarProps) {
   const strongest = stats.strongest;
   return (
-    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-5">
+    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-5">
       <StatCard
         label="Earthquakes"
         value={formatNumber(stats.total)}

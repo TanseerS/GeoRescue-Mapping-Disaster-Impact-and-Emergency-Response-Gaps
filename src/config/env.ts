@@ -4,7 +4,8 @@ const DEFAULT_FALLBACK_STYLE = "https://basemaps.cartocdn.com/gl/dark-matter-gl-
 const DEFAULT_USGS_BASE = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary";
 const DEFAULT_OVERPASS = [
   "https://overpass-api.de/api/interpreter",
-  "https://overpass.kumi.systems/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
 ];
 
 export const env = {

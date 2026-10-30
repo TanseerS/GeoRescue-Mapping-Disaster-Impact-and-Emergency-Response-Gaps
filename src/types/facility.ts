@@ -37,6 +37,8 @@ export interface FacilityResult {
   facilities: Facility[];
   error: string | null;
   fetchedAt: number | null;
+  /** When the in-flight request started (epoch ms). */
+  requestedAt: number | null;
 }
 
 export interface OverpassElement {

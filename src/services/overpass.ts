@@ -7,7 +7,10 @@ import type {
   OverpassResponse,
 } from "../types/facility";
 
-const REQUEST_TIMEOUT_MS = 30_000;
+/** Per-endpoint budget. Public Overpass instances can be slow under load. */
+const REQUEST_TIMEOUT_MS = 55_000;
+/** Start the next mirror if the current one has not answered within this delay. */
+const HEDGE_DELAY_MS = 8_000;
 
 /** Overpass area filter for a radius or bounding-box query. */
 function areaFilter(query: FacilityQuery): string {
@@ -21,13 +24,11 @@ function areaFilter(query: FacilityQuery): string {
 
 export function buildOverpassQuery(query: FacilityQuery): string {
   const area = areaFilter(query);
-  return `[out:json][timeout:25];
+  return `[out:json][timeout:50];
 (
-  nwr["amenity"="hospital"]${area};
+  nwr["amenity"~"^(hospital|fire_station|police)$"]${area};
   nwr["healthcare"="hospital"]${area};
-  nwr["amenity"="fire_station"]${area};
   nwr["emergency"="ambulance_station"]${area};
-  nwr["amenity"="police"]${area};
 );
 out center tags;`;
 }
@@ -82,44 +83,75 @@ export function parseOverpassElements(elements: OverpassElement[]): Facility[] {
   return facilities;
 }
 
-async function postQuery(endpoint: string, body: string, signal?: AbortSignal): Promise<OverpassResponse> {
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  const onAbort = () => controller.abort();
-  signal?.addEventListener("abort", onAbort);
-  try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
-      body: `data=${encodeURIComponent(body)}`,
-      signal: controller.signal,
-    });
-    if (response.status === 429) throw new Error("Overpass API rate limit reached");
-    if (!response.ok) throw new Error(`Overpass API responded with HTTP ${response.status}`);
-    return (await response.json()) as OverpassResponse;
-  } finally {
-    window.clearTimeout(timeout);
-    signal?.removeEventListener("abort", onAbort);
-  }
+async function postQuery(endpoint: string, body: string, signal: AbortSignal): Promise<OverpassResponse> {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8", Accept: "application/json" },
+    body: `data=${encodeURIComponent(body)}`,
+    signal,
+  });
+  if (response.status === 429) throw new Error("rate limit reached");
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return (await response.json()) as OverpassResponse;
 }
 
 /**
- * Fetches hospitals and emergency facilities from OpenStreetMap via the Overpass API,
- * trying each configured endpoint in order until one succeeds.
+ * Fetches hospitals and emergency facilities from OpenStreetMap via the Overpass API.
+ * Requests are hedged across the configured mirrors: the next mirror starts when the current
+ * one fails or is slow, the first successful response wins and the rest are cancelled.
  */
-export async function fetchFacilities(query: FacilityQuery, signal?: AbortSignal): Promise<Facility[]> {
+export function fetchFacilities(query: FacilityQuery, signal?: AbortSignal): Promise<Facility[]> {
   const body = buildOverpassQuery(query);
-  let lastError: Error | null = null;
-  for (const endpoint of env.overpassEndpoints) {
-    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-    try {
-      const data = await postQuery(endpoint, body, signal);
-      return parseOverpassElements(data.elements ?? []);
-    } catch (err) {
-      if (signal?.aborted) throw err;
-      lastError = err as Error;
-    }
-  }
-  const reason = lastError?.name === "AbortError" ? "the request timed out" : lastError?.message ?? "unknown error";
-  throw new Error(`OpenStreetMap facility service is unavailable (${reason}). Please retry in a moment.`);
+  const endpoints = env.overpassEndpoints;
+
+  return new Promise<Facility[]>((resolve, reject) => {
+    const controllers: AbortController[] = [];
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const errors: string[] = [];
+    let started = 0;
+    let settled = false;
+
+    const cleanup = () => {
+      timers.forEach((t) => clearTimeout(t));
+      controllers.forEach((c) => c.abort());
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      fn();
+    };
+    const onAbort = () => finish(() => reject(new DOMException("Aborted", "AbortError")));
+
+    const startNext = () => {
+      if (settled || started >= endpoints.length) return;
+      const endpoint = endpoints[started];
+      started += 1;
+      const controller = new AbortController();
+      controllers.push(controller);
+      timers.push(setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS));
+      timers.push(setTimeout(startNext, HEDGE_DELAY_MS));
+
+      postQuery(endpoint, body, controller.signal)
+        .then((data) => finish(() => resolve(parseOverpassElements(data.elements ?? []))))
+        .catch((err: Error) => {
+          if (settled) return;
+          errors.push(err.name === "AbortError" ? "timed out" : err.message);
+          if (errors.length >= endpoints.length) {
+            const reason = [...new Set(errors)].join(", ");
+            finish(() =>
+              reject(new Error(`OpenStreetMap facility servers are busy or unreachable (${reason}). Please retry in a moment.`)),
+            );
+          } else {
+            startNext();
+          }
+        });
+    };
+
+    if (signal?.aborted) return onAbort();
+    signal?.addEventListener("abort", onAbort);
+    if (endpoints.length === 0) return finish(() => reject(new Error("No Overpass API endpoint is configured.")));
+    startNext();
+  });
 }

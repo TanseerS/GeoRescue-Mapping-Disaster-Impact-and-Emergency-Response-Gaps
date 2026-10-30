@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
+import { readCachedFacilities, writeCachedFacilities } from "../services/facilityCache";
 import { facilityQueryKey, fetchFacilities } from "../services/overpass";
 import type { Facility, FacilityQuery, FacilityResult } from "../types/facility";
 
@@ -18,7 +19,14 @@ export function useFacilities(): FacilityStore {
 
   const update = (key: string, patch: Partial<FacilityResult>) =>
     setResults((prev) => {
-      const base: FacilityResult = prev[key] ?? { key, status: "idle", facilities: [], error: null, fetchedAt: null };
+      const base: FacilityResult = prev[key] ?? {
+        key,
+        status: "idle",
+        facilities: [],
+        error: null,
+        fetchedAt: null,
+        requestedAt: null,
+      };
       return { ...prev, [key]: { ...base, ...patch } };
     });
 
@@ -38,16 +46,26 @@ export function useFacilities(): FacilityStore {
 
     if (current) {
       current.controller.abort();
+      inFlight.current.delete(group);
       if (current.key !== key) update(current.key, { status: "idle" });
     }
+
+    const cached = force ? null : readCachedFacilities(key);
+    if (cached) {
+      update(key, { status: "success", facilities: cached.facilities, fetchedAt: cached.fetchedAt, error: null });
+      return key;
+    }
+
     const controller = new AbortController();
     inFlight.current.set(group, { key, controller });
-    update(key, { status: "loading", error: null });
+    update(key, { status: "loading", error: null, requestedAt: Date.now() });
 
     fetchFacilities(query, controller.signal)
       .then((facilities) => {
         if (controller.signal.aborted) return;
-        update(key, { status: "success", facilities, fetchedAt: Date.now() });
+        const fetchedAt = Date.now();
+        writeCachedFacilities(key, { facilities, fetchedAt });
+        update(key, { status: "success", facilities, fetchedAt });
       })
       .catch((err: Error) => {
         if (controller.signal.aborted) return;
